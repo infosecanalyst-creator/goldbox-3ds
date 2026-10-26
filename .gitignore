@@ -8,3 +8,11 @@ build*/
 ITEMS
 GAME.OVR
 data/
+build-3ds/
+build-romfs/
+*.3dsx
+*.smdh
+*.elf
+*.map
+tools/3ds/*.log
+tools/3ds/*.status

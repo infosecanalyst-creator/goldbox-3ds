@@ -79,6 +79,9 @@ void StopAllSounds() {}
 void Sleep(int ms) {
     if (!engine::Harness::enabled) std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }
+void MenuShow(const std::string&, const std::vector<MenuItem>&) {}
+void MenuHide() {}
+
 void EngineStopped() { engineDone = true; }
 }  // namespace platform
 

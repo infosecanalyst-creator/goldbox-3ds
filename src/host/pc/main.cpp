@@ -107,6 +107,9 @@ void StopAllSounds() {
 
 void Sleep(int ms) { SDL_Delay((Uint32)ms); }
 
+void MenuShow(const std::string&, const std::vector<MenuItem>&) {}
+void MenuHide() {}
+
 void EngineStopped() { engineDone = true; }
 
 }  // namespace platform

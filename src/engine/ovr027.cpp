@@ -128,6 +128,21 @@ char ovr027::displayInput(bool& specialKeyPressed, bool useOverlay, byte accept_
 
     HighlightSet highlights = BuildInputKeys(displayInputString, highlistCount);
 
+    // goldbox-3ds: publish the menu to the host (3DS bottom screen buttons).
+    // Display-only; no effect on game state.
+    {
+        std::vector<platform::MenuItem> items;
+        for (int w = 0; w < highlistCount; w++) {
+            int st = highlights[w]->start, en = highlights[w]->end;
+            if (st < 0 || st >= displayInputString.Length()) continue;
+            if (en >= displayInputString.Length()) en = displayInputString.Length() - 1;
+            String label = displayInputString.Substring(st, Math::Max(1, en - st + 1)).Trim();
+            items.push_back({label, displayInputString[st]});
+        }
+        platform::MenuShow(displayExtraString, items);
+    }
+    struct MenuHideOnExit { ~MenuHideOnExit() { platform::MenuHide(); } } menuHideOnExit;
+
     if (gbl::menuSelectedWord >= highlistCount)
     {
         gbl::menuSelectedWord = 0;

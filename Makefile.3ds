@@ -1,0 +1,93 @@
+#---------------------------------------------------------------------------------
+# goldbox-3ds - Nintendo 3DS build (devkitARM + libctru).
+#   make -f Makefile.3ds            -> goldbox.3dsx
+#   make -f Makefile.3ds 3dslink    -> send over Wi-Fi to the Homebrew Launcher (Y)
+# Built in Docker on Windows by tools/3ds/build-3ds.bat.
+#---------------------------------------------------------------------------------
+.SUFFIXES:
+
+ifeq ($(strip $(DEVKITARM)),)
+$(error "Please set DEVKITARM in your environment. export DEVKITARM=<path to>devkitARM")
+endif
+
+TOPDIR ?= $(CURDIR)
+include $(DEVKITARM)/3ds_rules
+
+TARGET      := goldbox
+BUILD       := build-3ds
+SOURCES     := src/cs src/Classes src/Classes/Combat src/Classes/DaxFiles src/engine src/host/common src/host/3ds
+DATA        :=
+INCLUDES    := src
+GRAPHICS    :=
+ROMFS       := build-romfs
+
+APP_TITLE       := Curse of the Azure Bonds
+APP_DESCRIPTION := goldbox-3ds: native Gold Box engine
+APP_AUTHOR      := goldbox-3ds (coab port)
+ICON            := assets/3ds/icon.png
+
+#---------------------------------------------------------------------------------
+ARCH     := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
+
+CFLAGS   := -g -O2 -mword-relocations -ffunction-sections -fwrapv \
+            $(ARCH) $(INCLUDE) -D__3DS__
+CXXFLAGS := $(CFLAGS) -std=gnu++17 -Wno-psabi
+ASFLAGS  := -g $(ARCH)
+LDFLAGS   = -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) -Wl,--gc-sections
+
+LIBS     := -lctru -lm
+LIBDIRS  := $(CTRULIB)
+
+#---------------------------------------------------------------------------------
+ifneq ($(BUILD),$(notdir $(CURDIR)))
+#---------------------------------------------------------------------------------
+
+export OUTPUT   := $(CURDIR)/$(TARGET)
+export TOPDIR   := $(CURDIR)
+export VPATH    := $(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
+export DEPSDIR  := $(CURDIR)/$(BUILD)
+
+CPPFILES := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
+DUPES    := $(sort $(filter $(foreach f,$(CPPFILES),$(if $(word 2,$(filter $(f),$(CPPFILES))),$(f))),$(CPPFILES)))
+ifneq ($(strip $(DUPES)),)
+$(error duplicate source file names across folders: $(DUPES))
+endif
+
+export LD        := $(CXX)
+export OFILES    := $(CPPFILES:.cpp=.o)
+export INCLUDE   := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
+                    $(foreach dir,$(LIBDIRS),-I$(dir)/include) -I$(CURDIR)/$(BUILD)
+export LIBPATHS  := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
+
+export APP_ICON := $(TOPDIR)/$(ICON)
+export _3DSXFLAGS += --smdh=$(CURDIR)/$(TARGET).smdh --romfs=$(CURDIR)/$(ROMFS)
+
+.PHONY: all clean romfs 3dslink
+
+all: romfs $(BUILD)
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.3ds
+
+romfs:
+	@mkdir -p $(ROMFS)/sounds
+	@cp assets/sounds/*.wav $(ROMFS)/sounds/
+
+$(BUILD):
+	@mkdir -p $@
+
+clean:
+	@rm -fr $(BUILD) $(ROMFS) $(TARGET).3dsx $(TARGET).smdh $(TARGET).elf
+
+3dslink: all
+	3dslink $(TARGET).3dsx
+
+#---------------------------------------------------------------------------------
+else
+#---------------------------------------------------------------------------------
+DEPENDS := $(OFILES:.o=.d)
+
+$(OUTPUT).3dsx : $(OUTPUT).elf $(OUTPUT).smdh
+$(OUTPUT).elf  : $(OFILES)
+
+-include $(DEPENDS)
+#---------------------------------------------------------------------------------
+endif

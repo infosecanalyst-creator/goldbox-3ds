@@ -9,6 +9,8 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 namespace platform {
 
@@ -24,6 +26,16 @@ void PlaySound(int id);
 void StopAllSounds();
 
 void Sleep(int milliseconds);
+
+// Menus. The engine's horizontal menus ("Move View Cast Encamp ...") are
+// published here while they wait for input, so a host can offer them as
+// buttons (3DS bottom screen). `key` is the hotkey character to send.
+struct MenuItem {
+    std::string label;
+    char key;
+};
+void MenuShow(const std::string& prompt, const std::vector<MenuItem>& items);
+void MenuHide();
 
 // Called when the engine thread finishes (coab's EngineStoppedCallback).
 void EngineStopped();
