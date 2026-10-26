@@ -88,6 +88,12 @@ DEPENDS := $(OFILES:.o=.d)
 $(OUTPUT).3dsx : $(OUTPUT).elf $(OUTPUT).smdh
 $(OUTPUT).elf  : $(OFILES)
 
+# Explicit SMDH (icon + title) rule; don't rely on the pattern rule's
+# prerequisites resolving on Windows/msys paths.
+$(OUTPUT).smdh :
+	@echo building smdh from $(APP_ICON)
+	@smdhtool --create "$(APP_TITLE)" "$(APP_DESCRIPTION)" "$(APP_AUTHOR)" "$(APP_ICON)" $@
+
 -include $(DEPENDS)
 #---------------------------------------------------------------------------------
 endif
