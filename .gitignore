@@ -1,0 +1,10 @@
+build*/
+*.ppm
+*.png
+!docs/**/*.png
+# Game data is never committed - bring your own GOG copy.
+*.DAX
+*.dax
+ITEMS
+GAME.OVR
+data/
