@@ -18,7 +18,7 @@ containing the `.DAX` files.
 | 1 | coab reference build running against GOG data | done |
 | 2 | C++ translation + SDL2/headless builds reach the title screen | done (plays the demo through combat) |
 | 2b | Differential testing vs coab (same seed, same inputs, compare state) | demo runs byte-identical to coab (3 seeds x 20,000 rolls); more scripts to add |
-| 3 | Nintendo 3DS backend (dual-screen UI, touch menus, ndsp, Wi-Fi deploy) | written, first device build pending |
+| 3 | Nintendo 3DS backend (dual-screen UI, touch menus, ndsp, Wi-Fi deploy) | builds (goldbox.3dsx); first on-device test pending |
 | 4 | Other Gold Box games via per-game engine profiles | planned |
 
 ## Layout
