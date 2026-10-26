@@ -5,8 +5,11 @@
 #pragma once
 
 #if defined(__3DS__)
+// libctru's individual headers have no extern "C" guard (only <3ds.h> does).
+extern "C" {
 #include <3ds/types.h>
 #include <3ds/synchronization.h>
+}
 #else
 #include <condition_variable>
 #include <mutex>
