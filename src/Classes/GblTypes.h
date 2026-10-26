@@ -127,6 +127,8 @@ struct Point {
 
     friend Point operator+(Point a, Point b) { return Point(a.x + b.x, a.y + b.y); }
     friend Point operator-(Point a, Point b) { return Point(a.x - b.x, a.y - b.y); }
+    Point& operator+=(Point b) { x += b.x; y += b.y; return *this; }
+    Point& operator-=(Point b) { x -= b.x; y -= b.y; return *this; }
     friend Point operator*(Point a, int b) { return Point(a.x * b, a.y * b); }
     friend Point operator/(Point a, int b) { return Point(a.x / b, a.y / b); }
     friend bool operator==(Point a, Point b) { return a.x == b.x && a.y == b.y; }

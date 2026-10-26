@@ -391,10 +391,9 @@ int ovr021::rest_memorize(bool& findNext, Player player)
 {
     // PORT-NOTE: C# iterates a lazy `yield` enumerator over spellList.spells while
     // MarkLearnt flips Learning flags (no list modification, so no C# exception).
-    // LearningList() here is an eager snapshot; MarkLearnt only clears Learning on
-    // the first matching spell, and after the first one findNext==true returns
-    // immediately, so the visited ids are the same. (Duplicate ids could differ in
-    // theory: the lazy version would skip a duplicate already marked learnt.)
+    // LearningList() here is an eager snapshot. MarkLearnt clears the first
+    // still-Learning match, which is the entry just visited, and the next pass
+    // returns at once, so the visited ids are the same as in C#.
     for (int id : player->spellList->LearningList())
     {
         if (findNext == true)

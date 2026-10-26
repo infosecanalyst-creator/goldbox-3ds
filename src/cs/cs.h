@@ -109,6 +109,9 @@ inline Ref<T> As(const Ref<U>& r) { return Ref<T>(std::dynamic_pointer_cast<T>(s
 // ---------------------------------------------------------------------------
 // String: std::string with C#-style members. C# `null` strings become "".
 // ---------------------------------------------------------------------------
+template <class T>
+class Array;
+
 class String : public std::string {
 public:
     String() = default;
@@ -218,6 +221,18 @@ public:
         return out;
     }
     char* ToCharArrayUnsafe() = delete;
+    // C# Trim(char[]) / TrimStart(char) / TrimEnd(char)
+    String Trim(const Array<char>& chars) const;
+    String TrimStart(char c) const {
+        std::size_t b = 0;
+        while (b < size() && at(b) == c) b++;
+        return String(substr(b));
+    }
+    String TrimEnd(char c) const {
+        std::size_t e = size();
+        while (e > 0 && at(e - 1) == c) e--;
+        return String(substr(0, e));
+    }
 
     static bool IsNullOrEmpty(const String& s) { return s.empty(); }
     static int Compare(const String& a, const String& b) { int c = a.compare(b); return c < 0 ? -1 : (c > 0 ? 1 : 0); }
@@ -389,6 +404,43 @@ public:
     }
     template <class F>
     static void ForEach(const Array& a, F f) { for (auto& x : a) f(x); }
+};
+
+inline String String::Trim(const Array<char>& chars) const {
+    auto in = [&](char c) { for (int i = 0; i < chars.Length(); i++) if (chars[i] == c) return true; return false; };
+    std::size_t b = 0, e = size();
+    while (b < e && in(at(b))) b++;
+    while (e > b && in(at(e - 1))) e--;
+    return String(substr(b, e - b));
+}
+
+// C# int.Parse / int.TryParse (decimal, optional sign, surrounding whitespace)
+struct Int32 {
+    static bool TryParse(const String& s, int& result) {
+        String t = s.Trim();
+        result = 0;
+        if (t.empty()) return false;
+        std::size_t i = 0;
+        bool neg = false;
+        if (t[0] == '+' || t[0] == '-') { neg = t[0] == '-'; i = 1; }
+        if (i >= t.size()) return false;
+        long long v = 0;
+        for (; i < t.size(); i++) {
+            char c = t[(int)i];
+            if (c < '0' || c > '9') return false;
+            v = v * 10 + (c - '0');
+            if (v > 2147483648LL) return false;
+        }
+        if (neg) v = -v;
+        if (v > INT32_MAX || v < INT32_MIN) return false;
+        result = (int)v;
+        return true;
+    }
+    static int Parse(const String& s) {
+        int r;
+        if (!TryParse(s, r)) throw Exception("FormatException");
+        return r;
+    }
 };
 
 // C# T[,]  ->  a(i, j)
