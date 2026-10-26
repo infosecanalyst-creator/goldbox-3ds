@@ -16,3 +16,4 @@ build-romfs/
 *.map
 tools/3ds/*.log
 tools/3ds/*.status
+!assets/**/*.png
