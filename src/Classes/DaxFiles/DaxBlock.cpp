@@ -73,7 +73,7 @@ void DaxBlock_::Recolor(bool useRandom, Array<byte> newColors, Array<byte> oldCo
                 for (int posX = 0; posX < (width * 8); posX++)
                 {
                     if (data[offset] == oldColors[colorIdx] &&
-                        (useRandom == false || ((random_number.Next() % 4) == 0)))
+                        (useRandom == false || ((random_number_().Next() % 4) == 0)))
                     {
                         data[offset] = newColors[colorIdx];
                     }

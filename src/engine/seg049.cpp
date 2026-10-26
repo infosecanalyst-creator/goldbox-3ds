@@ -2,12 +2,13 @@
 // The C# Semaphore(0, 1) becomes a binary semaphore on a mutex + condvar.
 // Copyright (c) 2026, the goldbox-3ds contributors. BSD 3-clause (see LICENSE).
 #include "engine/engine.h"
+#include "engine/harness.h"
 #include "platform/platform.h"
 
 namespace engine {
 
 void seg049::SysDelay(int milliseconds) {
-    if (milliseconds != 0) {
+    if (milliseconds != 0 && !Harness::enabled) {  // harness runs at full speed
         platform::Sleep(milliseconds);
     }
 }
@@ -43,6 +44,7 @@ void seg049::AddKey(ushort key) {
 ushort seg049::int_check_keyPressed() {
     // INT 16 - KEYBOARD - CHECK FOR KEYSTROKE (AH = 01h): peek, don't remove.
     if (abortRequested) throw EngineAbort();
+    if (Harness::enabled) return Harness::CheckKey();
     std::lock_guard<std::mutex> g(keysPressedLock);
     if (keysPressed.Count() > 0) {
         return keysPressed.Peek();
@@ -53,6 +55,8 @@ ushort seg049::int_check_keyPressed() {
 ushort seg049::int_get_keyPressed() {
     // INT 16 - KEYBOARD - GET KEYSTROKE (AH = 00h)
     ushort key = 0;
+
+    if (Harness::enabled) return Harness::GetKey();
 
     WaitForKey_WaitOne();
 

@@ -1,4 +1,5 @@
 #include "engine/engine.h"
+#include "engine/harness.h"
 
 namespace engine {
 
@@ -34,7 +35,9 @@ byte seg051::Random(byte arg_0)
         return 0;
     }
 
-    return (byte)(random_number.Next() % arg_0);
+    int raw = random_number.Next();
+    if (Harness::enabled) Harness::OnRandom(arg_0, raw);  // goldbox-3ds: diff harness
+    return (byte)(raw % arg_0);
 }
 
 int seg051::Random(int arg_0)
@@ -44,12 +47,16 @@ int seg051::Random(int arg_0)
         return 0;
     }
 
-    return random_number.Next() % arg_0;
+    int raw = random_number.Next();
+    if (Harness::enabled) Harness::OnRandom(arg_0, raw);  // goldbox-3ds: diff harness
+    return raw % arg_0;
 }
 
 double seg051::Random__Real()
 {
-    return random_number.NextDouble();
+    double raw = random_number.NextDouble();
+    if (Harness::enabled) Harness::OnRandomReal(raw);  // goldbox-3ds: diff harness
+    return raw;
 }
 
 

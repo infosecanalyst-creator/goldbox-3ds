@@ -857,6 +857,9 @@ namespace cs {
 // DaxBlock). Set by the host for replay/diff testing.
 struct Determinism {
     inline static int64_t fixedSeedTicks = 0;
+    // Virtual clock for the differential-test harness (see cs/io.h DateTime::Now).
+    inline static bool virtualTime = false;
+    inline static int64_t virtualTicks = 630000000000000000LL;
     static int SeedFromTicks(int64_t ticks) { return (int)(fixedSeedTicks != 0 ? fixedSeedTicks : ticks); }
 };
 }  // namespace cs

@@ -4,6 +4,7 @@
 // frames as PNG/PPM on request. Used to compare this C++ build against coab.
 //
 // Usage: goldbox_headless --data <dir> --script <file> [--seed N] [--out <dir>]
+//        goldbox_headless --data <dir> --harness <keys.txt> --trace <out.txt> [--seed N]
 // Script lines:  sleep <ms> | key <name-or-hex> | text <chars> | snap <name> | quit
 //   key names: enter esc space up down left right home end pgup pgdn bksp del
 //              or hex like 0x4800, or a single character.
@@ -18,6 +19,7 @@
 #include <string>
 #include <thread>
 
+#include "engine/harness.h"
 #include "host/common/host.h"
 #include "platform/keys.h"
 #include "platform/platform.h"
@@ -74,13 +76,15 @@ void PresentFrame(const int* ega, const uint8_t* palette) {
 void LoadSound(int, const char*) {}
 void PlaySound(int id) { std::printf("sound %d\n", id); }
 void StopAllSounds() {}
-void Sleep(int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
+void Sleep(int ms) {
+    if (!engine::Harness::enabled) std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+}
 void EngineStopped() { engineDone = true; }
 }  // namespace platform
 
 int main(int argc, char** argv) {
     host::Options opt;
-    std::string script;
+    std::string script, harnessScript, tracePath = "trace.txt";
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
         auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : ""; };
@@ -90,9 +94,22 @@ int main(int argc, char** argv) {
         else if (a == "--script") script = next();
         else if (a == "--out") outDir = next();
         else if (a == "--log") opt.consoleLog = true;
+        else if (a == "--harness") harnessScript = next();
+        else if (a == "--trace") tracePath = next();
     }
     if (opt.fixedSeed == 0) opt.fixedSeed = 12345;
     if (opt.userDir.empty()) opt.userDir = outDir + "/user";
+
+    if (!harnessScript.empty()) {
+        // Differential-test mode: keys come synchronously from the harness script.
+        if (!engine::Harness::Load(harnessScript, tracePath)) {
+            std::fprintf(stderr, "cannot load harness script %s\n", harnessScript.c_str());
+            return 1;
+        }
+        host::RunEngine(opt);
+        engine::Harness::Close();
+        return 0;
+    }
 
     std::thread engineThread([opt] { host::RunEngine(opt); });
 

@@ -14,7 +14,15 @@ struct ovr032 {
     };
     using MapReach = cs::Ref<MapReach_>;
 
-    inline static Array3<MapReach> mapReachCache = Array3<MapReach>(Point::MapMaxY * Point::MapMaxX, Point::MapMaxY * Point::MapMaxX, 2);
+    // PORT-NOTE: C# allocates a dense MapReach[1250, 1250, 2] (25 MB of pointers
+    // on the 3DS). Same semantics with a sparse map: unset entries read as null.
+    // coab never clears this cache between battles (line-of-sight results from
+    // one battle map leak into the next) - kept for fidelity, see docs/KNOWN_COAB_BUGS.md.
+    struct ReachCache {
+        std::unordered_map<uint32_t, MapReach> m;
+        MapReach& operator()(int a, int b, int c) { return m[((uint32_t)a * 1250u + (uint32_t)b) * 2u + (uint32_t)c]; }
+    };
+    inline static ReachCache mapReachCache;
     static MapReach MapCacheGet(Point p1, Point p2, bool ignoreWalls);
     static void canReachTarget(Point& target, Point attacker);
     static bool canReachTarget(int& range, Point target, Point attacker);

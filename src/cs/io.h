@@ -33,6 +33,12 @@ struct DateTime {
     int64_t Ticks = 0;  // 100ns units since an arbitrary epoch
 
     static DateTime Now() {
+        // Differential testing: a virtual clock that advances 10 ms per call,
+        // identical to tools/coab-harness/Harness.cs Harness.Now.
+        if (Determinism::virtualTime) {
+            Determinism::virtualTicks += 100000;
+            return DateTime{Determinism::virtualTicks};
+        }
         using namespace std::chrono;
         auto ns = duration_cast<nanoseconds>(system_clock::now().time_since_epoch()).count();
         // .NET ticks since 0001-01-01; only differences and seeding matter.

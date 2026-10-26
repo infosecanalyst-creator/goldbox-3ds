@@ -12,7 +12,13 @@ using namespace cs::enum_ops;
 class DaxBlock_ {
     // C#: new System.Random(unchecked((int)System.DateTime.Now.Ticks))
     // PORT-NOTE: seeded through cs::Determinism so replay runs are reproducible.
-    inline static Random random_number = Random(Determinism::SeedFromTicks(DateTime::Now().Ticks));
+    // PORT-NOTE: C# seeds this static Random at type initialisation. We seed it
+    // on first use instead, so the differential-test harness can fix the seed
+    // first (the harness copy of coab does the same).
+    static Random& random_number_() {
+        static Random r(Determinism::SeedFromTicks(DateTime::Now().Ticks));
+        return r;
+    }
 
 public:
     int height = 0; // 0x0;

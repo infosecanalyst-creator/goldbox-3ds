@@ -1,0 +1,10 @@
+randoms 20000
+idle 3
+key space
+idle 3
+key space
+idle 3
+key space
+idle 3
+key d
+idle 100000000
