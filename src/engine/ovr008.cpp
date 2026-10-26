@@ -1142,7 +1142,9 @@ String ovr008::buildMenuStrings(String& MenuString)
     {
         char ch = MenuString[i];
 
-        if (unk_31673->MemberOf(ch) == true)
+        // PORT-NOTE: (byte) casts on MemberOf args: C# char is unsigned, and a
+        // negative C++ char would index Set.bits out of range.
+        if (unk_31673->MemberOf((byte)ch) == true)
         {
             ch += ' ';
         }
@@ -1188,7 +1190,7 @@ int ovr008::sub_317AA(bool useOverlay, bool acceptReturn, MenuColorSet colors, S
             ovr025::PartySummary(gbl::SelectedPlayer);
             key_pressed = '\0';
         }
-    } while (validkeys->MemberOf(key_pressed) == false && (key_pressed != '\r' || acceptReturn == false));
+    } while (validkeys->MemberOf((byte)key_pressed) == false && (key_pressed != '\r' || acceptReturn == false));
 
     if (key_pressed == '\r')
     {

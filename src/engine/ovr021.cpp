@@ -346,7 +346,7 @@ bool ovr021::resting_time_menu() /* sub_58751 */
                 clock_583C8();
                 break;
         }
-    } while (unk_58731->MemberOf(input_key) == false);
+    } while (unk_58731->MemberOf((byte)input_key) == false);
 
     return resting;
 }
