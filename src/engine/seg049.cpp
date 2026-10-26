@@ -14,26 +14,26 @@ void seg049::SysDelay(int milliseconds) {
 }
 
 static void WaitForKey_Release() {
-    std::lock_guard<std::mutex> g(seg049::WaitForKeyLock);
+    LockGuard g(seg049::WaitForKeyLock);
     if (seg049::WaitForKeyCount == 0) seg049::WaitForKeyCount = 1;  // maximumCount = 1
     seg049::WaitForKey.notify_one();
 }
 
 static void WaitForKey_WaitOne() {
-    std::unique_lock<std::mutex> g(seg049::WaitForKeyLock);
-    seg049::WaitForKey.wait(g, [] { return seg049::WaitForKeyCount > 0 || seg049::abortRequested; });
+    LockGuard g(seg049::WaitForKeyLock);
+    seg049::WaitForKey.wait(seg049::WaitForKeyLock, [] { return seg049::WaitForKeyCount > 0 || seg049::abortRequested; });
     if (seg049::abortRequested) throw EngineAbort();
     seg049::WaitForKeyCount = 0;
 }
 
 void seg049::RequestAbort() {
-    std::lock_guard<std::mutex> g(WaitForKeyLock);
+    LockGuard g(WaitForKeyLock);
     abortRequested = true;
     WaitForKey.notify_all();
 }
 
 void seg049::AddKey(ushort key) {
-    std::lock_guard<std::mutex> g(keysPressedLock);
+    LockGuard g(keysPressedLock);
     keysPressed.Enqueue(key);
 
     if (keysPressed.Count() == 1) {
@@ -45,7 +45,7 @@ ushort seg049::int_check_keyPressed() {
     // INT 16 - KEYBOARD - CHECK FOR KEYSTROKE (AH = 01h): peek, don't remove.
     if (abortRequested) throw EngineAbort();
     if (Harness::enabled) return Harness::CheckKey();
-    std::lock_guard<std::mutex> g(keysPressedLock);
+    LockGuard g(keysPressedLock);
     if (keysPressed.Count() > 0) {
         return keysPressed.Peek();
     }
@@ -60,7 +60,7 @@ ushort seg049::int_get_keyPressed() {
 
     WaitForKey_WaitOne();
 
-    std::lock_guard<std::mutex> g(keysPressedLock);
+    LockGuard g(keysPressedLock);
     key = keysPressed.Dequeue();
 
     if (keysPressed.Count() > 0) {

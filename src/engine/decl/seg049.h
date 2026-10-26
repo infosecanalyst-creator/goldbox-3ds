@@ -8,11 +8,11 @@ struct seg049 {
     inline static byte skipReadFlag = 0;
     static void SysDelay(int milliseconds);
     inline static Queue<ushort> keysPressed;
-    inline static std::mutex keysPressedLock; // PORT-NOTE: C# `lock (keysPressed)`
+    inline static cs::Mutex keysPressedLock; // PORT-NOTE: C# `lock (keysPressed)`
     // PORT-NOTE: C# `static Semaphore WaitForKey = new Semaphore(0, 1);` -> binary semaphore built from
     // a mutex + condition variable + count (0 or 1). Hand-ported.
-    inline static std::mutex WaitForKeyLock;
-    inline static std::condition_variable WaitForKey;
+    inline static cs::Mutex WaitForKeyLock;
+    inline static cs::CondVar WaitForKey;
     inline static int WaitForKeyCount = 0;
     static void AddKey(ushort key);
     static ushort int_check_keyPressed();

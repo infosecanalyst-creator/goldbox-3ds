@@ -7,7 +7,7 @@
 
 #include <cstdio>
 #include <functional>
-#include <mutex>
+#include "cs/sync.h"
 
 namespace Logging {
 using namespace cs;
@@ -15,13 +15,13 @@ using namespace cs;
 class DebugWriter {
     String filename;
     std::FILE* writer = nullptr;
-    std::mutex iolock;
+    Mutex iolock;
 
 public:
     explicit DebugWriter(const String& _filename) : filename(_filename) {}
     ~DebugWriter() { Close(); }
     void WriteLine(const String& s) {
-        std::lock_guard<std::mutex> g(iolock);
+        LockGuard g(iolock);
         if (writer == nullptr && !filename.empty()) writer = std::fopen(filename.c_str(), "a");
         if (writer != nullptr) {
             std::fputs(s.c_str(), writer);
@@ -30,12 +30,12 @@ public:
         }
     }
     void Write(const String& s) {
-        std::lock_guard<std::mutex> g(iolock);
+        LockGuard g(iolock);
         if (writer == nullptr && !filename.empty()) writer = std::fopen(filename.c_str(), "a");
         if (writer != nullptr) std::fputs(s.c_str(), writer);
     }
     void Close() {
-        std::lock_guard<std::mutex> g(iolock);
+        LockGuard g(iolock);
         if (writer != nullptr) std::fclose(writer);
         writer = nullptr;
     }
