@@ -5,7 +5,6 @@
 namespace engine {
 
 // the 2 is made up.
-// the 2 is made up.
 // C#: static byte[, , ,] unk_1AB1C = new byte[2, 4, 6, 11]; //seg600:480C unk_1AB1C  -- defined in decl/ovr011.h
 
 void ovr011::set_background_tile(int tileId, int y, int x) /* sub_37046 */
@@ -860,11 +859,11 @@ bool ovr011::try_place_combatant(int arg_0, int arg_2, int arg_4, int arg_6, int
             gbl::BackGroundTiles[groundTile]->move_cost < 0xFF)
         {
             unk_1AB1C(gbl::currentTeam, arg_0, arg_6, arg_8) = 0;
-return true;
+            return true;
         }
         else
         {
-return false;
+            return false;
         }
     }
 }
@@ -877,13 +876,7 @@ return false;
 // C#: static byte[] /*seg600:0300*/ unk_16610 = { 5, 4, 5, 6, 3, 8, 7, 2 };  -- defined in decl/ovr011.h
 // C#: static byte[] /*seg600:0308*/ unk_16618 = { 3, 2, 2, 3, 0, 2, 5, 3 };  -- defined in decl/ovr011.h
 
-// C#: static byte[, ,] unk_16620 = new byte[5, 6, 2] { // unk_16620 seg600:0310   -- defined in decl/ovr011.h
-        {{1,0},{1,0},{1,0},{2,9},{3,10},{4,10}}, // 310 - 31B
-        {{0,2},{0,3},{1,4},{2,5},{3,6},{4,7}}, // 31C - 327
-        {{0,6},{0,7},{1,8},{1,0},{1,0},{1,0}}, // 328 - 333
-        {{3,6},{4,7},{5,8},{6,9},{7,10},{8,10}}, // 334 - 33F
-        {{0,6},{0,7},{1,8},{2,9},{3,10},{4,10}}, // 340 - 31B
-};
+// C#: static byte[, ,] unk_16620 = new byte[5, 6, 2] { ... }; // unk_16620 seg600:0310  -- defined in decl/ovr011.h
 
 // enum tri_state
 // {
@@ -914,7 +907,7 @@ bool ovr011::place_combatant(int player_index) /* sub_38380 */
 
     do
     {
-        int half_dir = direction_165FC(gbl::team_direction[gbl::currentTeam), var_14] / 2;
+        int half_dir = direction_165FC(gbl::team_direction[gbl::currentTeam], var_14) / 2;
 
         switch (state)
         {
@@ -982,7 +975,7 @@ bool ovr011::place_combatant(int player_index) /* sub_38380 */
 
                     for (int var_A = 1; var_A <= 3; var_A++)
                     {
-                        int tmpDir = direction_165EC(gbl::team_direction[gbl::currentTeam), var_A];
+                        int tmpDir = direction_165EC(gbl::team_direction[gbl::currentTeam], var_A);
 
                         if (gbl::game_state == GameState::WildernessMap ||
                             get_dir_flags(tmpDir, tmpY, tmpX) != 1)
@@ -1015,7 +1008,7 @@ bool ovr011::place_combatant(int player_index) /* sub_38380 */
                 int tmpX = gbl::team_start_x[gbl::currentTeam] + gbl::mapPosX;
                 int tmpY = gbl::team_start_y[gbl::currentTeam] + gbl::mapPosY;
 
-                int tmpDir = direction_165EC(gbl::team_direction[gbl::currentTeam), var_14];
+                int tmpDir = direction_165EC(gbl::team_direction[gbl::currentTeam], var_14);
 
                 if (gbl::game_state == GameState::WildernessMap ||
                     get_dir_flags(tmpDir, tmpY, tmpX) != 1)
