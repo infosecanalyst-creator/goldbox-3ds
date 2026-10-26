@@ -611,10 +611,10 @@ public:
     void Reverse() const { std::reverse(v().begin(), v().end()); }
     // Sort() uses T's CompareTo (IComparable); Sort(cmp) takes a Comparison.
     void Sort() const;
+    // C# List<T>.Sort is .NET's (unstable) introsort; replicate it exactly so
+    // equal elements end up in the same order as in coab.
     template <class C>
-    void Sort(C cmp) const {
-        std::stable_sort(v().begin(), v().end(), [&](const T& a, const T& b) { return cmp(a, b) < 0; });
-    }
+    void Sort(C cmp) const;
     T Max() const { return *std::max_element(v().begin(), v().end()); }
     T Min() const { return *std::min_element(v().begin(), v().end()); }
 
@@ -630,9 +630,115 @@ template <class T, std::enable_if_t<std::is_arithmetic<T>::value, int> = 0>
 inline int CompareTo(const T& a, const T& b) { return a < b ? -1 : (b < a ? 1 : 0); }
 }  // namespace detail
 
+namespace detail {
+// Exact port of .NET Framework 4.x ArraySortHelper<T>.IntrospectiveSort
+// (the algorithm behind List<T>.Sort / Array.Sort for reference types).
+template <class T, class C>
+struct DotNetSort {
+    std::vector<T>& k;
+    C& cmp;
+    void Swap(int i, int j) {
+        if (i != j) std::swap(k[(std::size_t)i], k[(std::size_t)j]);
+    }
+    void SwapIfGreater(int a, int b) {
+        if (a != b && cmp(k[(std::size_t)a], k[(std::size_t)b]) > 0) std::swap(k[(std::size_t)a], k[(std::size_t)b]);
+    }
+    void InsertionSort(int lo, int hi) {
+        for (int i = lo; i < hi; i++) {
+            int j = i;
+            T t = k[(std::size_t)(i + 1)];
+            while (j >= lo && cmp(t, k[(std::size_t)j]) < 0) {
+                k[(std::size_t)(j + 1)] = k[(std::size_t)j];
+                j--;
+            }
+            k[(std::size_t)(j + 1)] = t;
+        }
+    }
+    void DownHeap(int i, int n, int lo) {
+        T d = k[(std::size_t)(lo + i - 1)];
+        while (i <= n >> 1) {
+            int child = 2 * i;
+            if (child < n && cmp(k[(std::size_t)(lo + child - 1)], k[(std::size_t)(lo + child)]) < 0) child++;
+            if (!(cmp(d, k[(std::size_t)(lo + child - 1)]) < 0)) break;
+            k[(std::size_t)(lo + i - 1)] = k[(std::size_t)(lo + child - 1)];
+            i = child;
+        }
+        k[(std::size_t)(lo + i - 1)] = d;
+    }
+    void Heapsort(int lo, int hi) {
+        int n = hi - lo + 1;
+        for (int i = n >> 1; i >= 1; i--) DownHeap(i, n, lo);
+        for (int i = n; i > 1; i--) {
+            Swap(lo, lo + i - 1);
+            DownHeap(1, i - 1, lo);
+        }
+    }
+    int PickPivotAndPartition(int lo, int hi) {
+        int middle = lo + ((hi - lo) >> 1);
+        SwapIfGreater(lo, middle);
+        SwapIfGreater(lo, hi);
+        SwapIfGreater(middle, hi);
+        T pivot = k[(std::size_t)middle];
+        Swap(middle, hi - 1);
+        int left = lo, right = hi - 1;
+        while (left < right) {
+            while (cmp(k[(std::size_t)(++left)], pivot) < 0) {}
+            while (cmp(pivot, k[(std::size_t)(--right)]) < 0) {}
+            if (left >= right) break;
+            Swap(left, right);
+        }
+        Swap(left, hi - 1);
+        return left;
+    }
+    void IntroSort(int lo, int hi, int depthLimit) {
+        while (hi > lo) {
+            int partitionSize = hi - lo + 1;
+            if (partitionSize <= 16) {
+                if (partitionSize == 1) return;
+                if (partitionSize == 2) { SwapIfGreater(lo, hi); return; }
+                if (partitionSize == 3) {
+                    SwapIfGreater(lo, hi - 1);
+                    SwapIfGreater(lo, hi);
+                    SwapIfGreater(hi - 1, hi);
+                    return;
+                }
+                InsertionSort(lo, hi);
+                return;
+            }
+            if (depthLimit == 0) { Heapsort(lo, hi); return; }
+            depthLimit--;
+            int p = PickPivotAndPartition(lo, hi);
+            IntroSort(p + 1, hi, depthLimit);
+            hi = p - 1;
+        }
+    }
+    static int FloorLog2(int n) {
+        int r = 0;
+        while (n >= 1) { r++; n /= 2; }
+        return r;
+    }
+    void Run() {
+        int length = (int)k.size();
+        if (length < 2) return;
+        // .NET passes keys.Length = the List's backing-array capacity (4, 8, 16, ...)
+        int cap = 4;
+        while (cap < length) cap *= 2;
+        IntroSort(0, length - 1, 2 * FloorLog2(cap));
+    }
+};
+}  // namespace detail
+
+template <class T>
+template <class C>
+inline void List<T>::Sort(C cmp) const {
+    detail::DotNetSort<T, C> s{v(), cmp};
+    s.Run();
+}
+
 template <class T>
 inline void List<T>::Sort() const {
-    std::stable_sort(v().begin(), v().end(), [](const T& a, const T& b) { return detail::CompareTo(a, b) < 0; });
+    auto cmp = [](const T& a, const T& b) { return detail::CompareTo(a, b); };
+    Sort(cmp);
 }
 
 // ---------------------------------------------------------------------------
