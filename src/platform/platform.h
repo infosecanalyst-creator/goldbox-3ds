@@ -30,11 +30,14 @@ void Sleep(int milliseconds);
 // Menus. The engine's horizontal menus ("Move View Cast Encamp ...") are
 // published here while they wait for input, so a host can offer them as
 // buttons (3DS bottom screen). `key` is the hotkey character to send.
+// `acceptsDirections`: the engine also takes arrow keys right now (movement);
+// when false, arrows do nothing in coab, so hosts can map the D-pad to the
+// menu's own highlight keys (',' previous / '.' next).
 struct MenuItem {
     std::string label;
     char key;
 };
-void MenuShow(const std::string& prompt, const std::vector<MenuItem>& items);
+void MenuShow(const std::string& prompt, const std::vector<MenuItem>& items, bool acceptsDirections);
 void MenuHide();
 
 // Called when the engine thread finishes (coab's EngineStoppedCallback).

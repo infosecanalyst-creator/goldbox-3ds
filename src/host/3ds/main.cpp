@@ -39,6 +39,8 @@ LightLock menuLock;
 std::string menuPrompt;
 std::vector<platform::MenuItem> menuItems;
 volatile int menuVersion = 0;
+volatile bool menuAcceptsDirections = true;
+volatile bool menuVisible = false;
 
 // ---------------------------------------------------------------------------
 // Sound
@@ -176,6 +178,7 @@ void DrawUI() {
         bool menu = b.row < 15;
         std::printf("\x1b[%d;%dH%s[%s]\x1b[0m", b.row, b.col, menu ? "\x1b[42;30m" : "\x1b[47;30m", b.label.c_str());
     }
+    if (!ndspOk) std::printf("\x1b[28;0H\x1b[31m No sound: run DSP1 once to dump dspfirm.cdc\x1b[0m");
     std::printf("\x1b[29;0H\x1b[37m A=Enter B=Esc Y=Space  START+SELECT=quit\x1b[0m");
 }
 
@@ -251,10 +254,12 @@ void StopAllSounds() {
 
 void Sleep(int ms) { svcSleepThread((s64)ms * 1000000LL); }
 
-void MenuShow(const std::string& prompt, const std::vector<MenuItem>& items) {
+void MenuShow(const std::string& prompt, const std::vector<MenuItem>& items, bool acceptsDirections) {
     LightLock_Lock(&menuLock);
     menuPrompt = prompt;
     menuItems = items;
+    menuAcceptsDirections = acceptsDirections;
+    menuVisible = !items.empty();
     menuVersion++;
     LightLock_Unlock(&menuLock);
 }
@@ -264,6 +269,8 @@ void MenuHide() {
     if (!menuItems.empty() || !menuPrompt.empty()) {
         menuItems.clear();
         menuPrompt.clear();
+        menuVisible = false;
+        menuAcceptsDirections = true;
         menuVersion++;
     }
     LightLock_Unlock(&menuLock);
@@ -346,11 +353,14 @@ int main(int argc, char** argv) {
         if (down & KEY_ZR) host::PushKey(keys::PageDown);
 
         // Directions with key repeat (D-pad, Circle Pad, C-stick).
+        // In a plain menu (no movement accepted) coab moves the highlight with
+        // ',' and '.', so the D-pad does that; A then picks the highlighted item.
+        bool menuMode = menuVisible && !menuAcceptsDirections;
         uint16_t dirKey = 0;
-        if (held & (KEY_DUP | KEY_CPAD_UP)) dirKey = keys::Up;
-        else if (held & (KEY_DDOWN | KEY_CPAD_DOWN)) dirKey = keys::Down;
-        else if (held & (KEY_DLEFT | KEY_CPAD_LEFT)) dirKey = keys::Left;
-        else if (held & (KEY_DRIGHT | KEY_CPAD_RIGHT)) dirKey = keys::Right;
+        if (held & (KEY_DUP | KEY_CPAD_UP)) dirKey = menuMode ? keys::Comma : keys::Up;
+        else if (held & (KEY_DDOWN | KEY_CPAD_DOWN)) dirKey = menuMode ? keys::Period : keys::Down;
+        else if (held & (KEY_DLEFT | KEY_CPAD_LEFT)) dirKey = menuMode ? keys::Comma : keys::Left;
+        else if (held & (KEY_DRIGHT | KEY_CPAD_RIGHT)) dirKey = menuMode ? keys::Period : keys::Right;
         u64 now = osGetTime();
         if (dirKey != heldKey) {
             heldKey = dirKey;

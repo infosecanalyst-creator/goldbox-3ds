@@ -4,6 +4,7 @@
 #include "host/common/host.h"
 
 #include "engine/engine.h"
+#include "engine/harness.h"
 #include "platform/platform.h"
 
 #include <cstdio>
@@ -15,6 +16,27 @@
 #endif
 
 namespace host {
+
+// coab's MainForm.setSettings() with its Settings.settings defaults. Not
+// applied in differential-test runs (the coab harness doesn't apply them).
+static void ApplyDefaultSettings() {
+    using namespace Classes;
+    Cheats::PlayerAlwaysSavesSet(false);
+    Cheats::AlwayShowAreaMapSet(false);
+    Cheats::FreeTrainingSet(false);
+    Cheats::SkipCopyProtectionSet(true);
+    Cheats::AllowGodsInterveneSet(false);
+    Cheats::DisplayFullItemNamesSet(false);
+    Cheats::ViewItemStatsSet(false);
+    Cheats::SkipTitleScreenSet(false);
+    Cheats::ImprovedAreaMapSet(false);
+    Cheats::NoRaceLevelLimits(false);
+    Cheats::NoRaceClassRestrictions(false);
+    Cheats::SortTreasureSet(false);
+    engine::seg044::SetSound(true);
+    engine::seg044::SetPicture(true);
+    engine::seg044::SetAnimation(true);
+}
 
 void RunEngine(const Options& opt) {
     if (!opt.dataDir.empty() && chdir(opt.dataDir.c_str()) != 0) {
@@ -29,6 +51,7 @@ void RunEngine(const Options& opt) {
 
     try {
         engine::seg001::__SystemInit([] { platform::EngineStopped(); });
+        if (!engine::Harness::enabled) ApplyDefaultSettings();
         engine::seg001::PROGRAM();
     } catch (const cs::EngineAbort&) {
         // normal shutdown path (coab: Thread.Abort)

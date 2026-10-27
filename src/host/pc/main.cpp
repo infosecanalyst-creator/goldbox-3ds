@@ -107,7 +107,7 @@ void StopAllSounds() {
 
 void Sleep(int ms) { SDL_Delay((Uint32)ms); }
 
-void MenuShow(const std::string&, const std::vector<MenuItem>&) {}
+void MenuShow(const std::string&, const std::vector<MenuItem>&, bool) {}
 void MenuHide() {}
 
 void EngineStopped() { engineDone = true; }

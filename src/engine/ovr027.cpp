@@ -139,7 +139,7 @@ char ovr027::displayInput(bool& specialKeyPressed, bool useOverlay, byte accept_
             String label = displayInputString.Substring(st, Math::Max(1, en - st + 1)).Trim();
             items.push_back({label, displayInputString[st]});
         }
-        platform::MenuShow(displayExtraString, items);
+        platform::MenuShow(displayExtraString, items, accept_ctrlkeys != 0);
     }
     struct MenuHideOnExit { ~MenuHideOnExit() { platform::MenuHide(); } } menuHideOnExit;
 
