@@ -1,17 +1,27 @@
 // host/3ds/main.cpp - Nintendo 3DS host (New 3DS / New 3DS XL).
 //
-// Top screen: the game's 320x200 frame, 1:1, centred.
-// Bottom screen (touch): the game's current menu as big buttons, plus an
-// on-screen keyboard for names and text input.
-// Controls: D-pad / Circle Pad = arrows, A = Enter, B = Esc, Y = Space,
+// Bottom screen (touch): the game itself, 320x200 pixel for pixel, with a
+//   strip of big buttons in the 40 spare pixel rows underneath. Tap a word on
+//   the game's menu line to pick it.
+// Top screen: a dashboard - the current menu in large text and the controls.
+//   While the on-screen keyboard is open (KEYS / SELECT) the keyboard takes the
+//   bottom screen and the game moves to the top screen so you can see what you
+//   are typing.
+// Controls: D-pad / Circle Pad = arrows (or step the menu highlight in plain
+//           menus), A = Enter, B = Esc, X = Yes, Y = Space,
 //           L/R/ZL/ZR = diagonal moves (Home/PgUp/End/PgDn),
-//           SELECT = toggle keyboard page, START+SELECT = quit.
+//           SELECT = keyboard, START+SELECT = quit.
+//
+// Taps and buttons only ever send the keys the original game expects, so the
+// engine is unchanged (it still matches coab byte for byte in the tests).
 //
 // Data: put the game's files (*.DAX, ITEMS, ...) in sdmc:/3ds/goldbox/cotab/
 // Saves and logs go to sdmc:/3ds/goldbox/user/.
 // Copyright (c) 2026, the goldbox-3ds contributors. BSD 3-clause (see LICENSE).
 #include <3ds.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -30,6 +40,8 @@ namespace {
 LightLock frameLock;
 int egaFrame[320 * 200];
 uint8_t framePal[16 * 3];
+uint8_t font[64][8];  // the game's own 8x8 font, copied on the engine thread
+bool fontReady = false;
 volatile bool engineDone = false;
 
 // ---------------------------------------------------------------------------
@@ -38,7 +50,6 @@ volatile bool engineDone = false;
 LightLock menuLock;
 std::string menuPrompt;
 std::vector<platform::MenuItem> menuItems;
-volatile int menuVersion = 0;
 volatile bool menuAcceptsDirections = true;
 volatile bool menuVisible = false;
 
@@ -99,96 +110,218 @@ bool LoadWav(const char* path, Sample& out) {
 }
 
 // ---------------------------------------------------------------------------
-// Bottom screen UI (libctru console: 40x30 cells of 8x8 pixels)
+// Drawing straight into the framebuffers (column-major, 240 pixels per
+// column, bottom-to-top, BGR8). Top is 400x240, bottom 320x240.
 // ---------------------------------------------------------------------------
-PrintConsole bottomConsole;
+struct RGB {
+    uint8_t r, g, b;
+};
+constexpr RGB kBlack{0, 0, 0};
+constexpr RGB kDash{8, 12, 40};       // dashboard background (deep blue)
+constexpr RGB kGold{255, 204, 64};
+constexpr RGB kCyan{96, 224, 255};
+constexpr RGB kWhite{240, 240, 240};
+constexpr RGB kGrey{150, 150, 160};
+constexpr RGB kRed{255, 96, 96};
+constexpr RGB kBtn{40, 56, 120};       // button face
+constexpr RGB kBtnEdge{120, 150, 230};
+constexpr RGB kBtnDown{220, 180, 60};
+
+struct Surface {
+    u8* fb;
+    int w;  // 400 (top) or 320 (bottom)
+};
+
+inline void Put(const Surface& s, int x, int y, RGB c) {
+    if ((unsigned)x >= (unsigned)s.w || (unsigned)y >= 240u) return;
+    u8* p = s.fb + ((size_t)x * 240 + (239 - y)) * 3;
+    p[0] = c.b;
+    p[1] = c.g;
+    p[2] = c.r;
+}
+
+void Fill(const Surface& s, int x0, int y0, int w, int h, RGB c) {
+    int x1 = std::min(s.w, x0 + w), y1 = std::min(240, y0 + h);
+    x0 = std::max(0, x0);
+    y0 = std::max(0, y0);
+    for (int x = x0; x < x1; x++) {
+        u8* col = s.fb + (size_t)x * 240 * 3;
+        for (int y = y0; y < y1; y++) {
+            u8* p = col + (239 - y) * 3;
+            p[0] = c.b;
+            p[1] = c.g;
+            p[2] = c.r;
+        }
+    }
+}
+
+void Frame(const Surface& s, int x, int y, int w, int h, RGB c) {
+    Fill(s, x, y, w, 1, c);
+    Fill(s, x, y + h - 1, w, 1, c);
+    Fill(s, x, y, 1, h, c);
+    Fill(s, x + w - 1, y, 1, h, c);
+}
+
+// Text in the game's font (upper case only, like the game).
+void Text(const Surface& s, int x, int y, const std::string& str, RGB c, int scale = 1) {
+    if (!fontReady) return;
+    for (char ch : str) {
+        int g = std::toupper((unsigned char)ch) % 64;
+        for (int r = 0; r < 8; r++) {
+            uint8_t bits = font[g][r];
+            for (int i = 0; i < 8; i++)
+                if (bits & (0x80 >> i)) {
+                    if (scale == 1) Put(s, x + i, y + r, c);
+                    else Fill(s, x + i * scale, y + r * scale, scale, scale, c);
+                }
+        }
+        x += 8 * scale;
+    }
+}
+
+int TextWidth(const std::string& str, int scale = 1) { return (int)str.size() * 8 * scale; }
+
+// The game frame, 1:1, at (ox, oy).
+void BlitGame(const Surface& s, int ox, int oy) {
+    LightLock_Lock(&frameLock);
+    for (int x = 0; x < 320; x++) {
+        u8* col = s.fb + (size_t)(x + ox) * 240 * 3;
+        for (int y = 0; y < 200; y++) {
+            const uint8_t* c = framePal + egaFrame[y * 320 + x] * 3;
+            u8* p = col + (239 - (y + oy)) * 3;
+            p[0] = c[2];
+            p[1] = c[1];
+            p[2] = c[0];
+        }
+    }
+    LightLock_Unlock(&frameLock);
+}
+
+// ---------------------------------------------------------------------------
+// Touch buttons (pixel rectangles on the bottom screen)
+// ---------------------------------------------------------------------------
+constexpr uint16_t kToggleKeyboard = 0xFFFF;
 
 struct Button {
-    int col, row, width;  // in console cells
+    int x, y, w, h;
     uint16_t key;
     std::string label;
 };
-std::vector<Button> buttons;
+
+bool keyboardOpen = false;
 int keyboardPage = 0;  // 0 = letters, 1 = digits/symbols
-int drawnMenuVersion = -1;
-int drawnPage = -1;
+uint16_t flashKey = 0;  // last pressed button, drawn highlighted briefly
+u64 flashUntil = 0;
 
-void AddButton(int col, int row, const std::string& label, uint16_t key) {
-    buttons.push_back({col, row, (int)label.size() + 2, key, label});
+std::vector<Button> StripButtons() {
+    // The 40 rows under the game frame: y 200..239.
+    static const struct {
+        const char* label;
+        uint16_t key;
+    } defs[] = {{"ESC", keys::Escape}, {"YES", (uint16_t)'Y'}, {"NO", (uint16_t)'N'},
+                {"ENTER", keys::Enter}, {"SPACE", keys::Space}, {"KEYS", kToggleKeyboard}};
+    std::vector<Button> b;
+    int n = 6, gap = 3, w = (320 - gap * (n + 1)) / n;
+    for (int i = 0; i < n; i++) b.push_back({gap + i * (w + gap), 203, w, 34, defs[i].key, defs[i].label});
+    return b;
 }
 
-void DrawUI() {
-    consoleSelect(&bottomConsole);
-    consoleClear();
-    buttons.clear();
-
-    std::string prompt;
-    std::vector<platform::MenuItem> items;
-    LightLock_Lock(&menuLock);
-    prompt = menuPrompt;
-    items = menuItems;
-    drawnMenuVersion = menuVersion;
-    LightLock_Unlock(&menuLock);
-
-    std::printf("\x1b[0;0H\x1b[33;1m CURSE OF THE AZURE BONDS\x1b[0m   goldbox-3ds");
-    // Menu buttons: rows 2..13, wrapped
-    if (!prompt.empty()) std::printf("\x1b[2;1H\x1b[36m%.38s\x1b[0m", prompt.c_str());
-    int col = 1, row = items.empty() ? 3 : 4;
-    for (auto& it : items) {
-        int w = (int)it.label.size() + 2;
-        if (col + w > 39) {
-            col = 1;
-            row += 2;
-        }
-        if (row > 13) break;
-        unsigned char k = (unsigned char)it.key;
-        if (k >= 'a' && k <= 'z') k = (unsigned char)(k - 32);
-        AddButton(col, row, it.label, (uint16_t)k);
-        col += w + 1;
-    }
-    if (items.empty()) std::printf("\x1b[4;2H\x1b[37m(no menu - use buttons or keyboard)\x1b[0m");
-
-    // Keyboard: rows 16..27
-    static const char* rowsLetters[] = {"QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"};
-    static const char* rowsDigits[] = {"1234567890", "-.,", ""};
-    const char** rows = keyboardPage == 0 ? rowsLetters : rowsDigits;
-    for (int r = 0; r < 3; r++) {
-        const char* s = rows[r];
-        int len = (int)std::strlen(s);
-        int start = (40 - len * 4) / 2;
+std::vector<Button> KeyboardButtons() {
+    std::vector<Button> b;
+    static const char* letters[] = {"1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"};
+    static const char* symbols[] = {"1234567890", "-.,", "", ""};
+    const char** rows = keyboardPage == 0 ? letters : symbols;
+    const int kw = 29, kh = 30, gap = 3;
+    for (int r = 0; r < 4; r++) {
+        int len = (int)std::strlen(rows[r]);
+        int x0 = (320 - (len * kw + (len - 1) * gap)) / 2;
         for (int i = 0; i < len; i++) {
-            char c = s[i];
-            uint16_t key = c == '-' ? keys::Minus : c == '.' ? keys::Period : c == ',' ? keys::Comma : (uint16_t)(unsigned char)c;
-            AddButton(start + i * 4, 16 + r * 2, std::string(1, c), key);
+            char c = rows[r][i];
+            uint16_t key = c == '-' ? keys::Minus : c == '.' ? keys::Period : c == ',' ? keys::Comma : keys::Letter(c);
+            b.push_back({x0 + i * (kw + gap), 8 + r * (kh + gap), kw, kh, key, std::string(1, c)});
         }
     }
-    AddButton(1, 23, "ESC", keys::Escape);
-    AddButton(7, 23, "SPACE", keys::Space);
-    AddButton(15, 23, "BKSP", keys::Backspace);
-    AddButton(22, 23, "DEL", keys::Delete);
-    AddButton(28, 23, "ENTER", keys::Enter);
-    AddButton(1, 26, keyboardPage == 0 ? "123" : "ABC", 0xFFFF);  // page toggle
-    AddButton(8, 26, "HOME", keys::Home);
-    AddButton(15, 26, "PGUP", keys::PageUp);
-    AddButton(22, 26, "END", keys::End);
-    AddButton(28, 26, "PGDN", keys::PageDown);
-    drawnPage = keyboardPage;
-
-    for (auto& b : buttons) {
-        bool menu = b.row < 15;
-        std::printf("\x1b[%d;%dH%s[%s]\x1b[0m", b.row, b.col, menu ? "\x1b[42;30m" : "\x1b[47;30m", b.label.c_str());
-    }
-    if (!ndspOk) std::printf("\x1b[28;0H\x1b[31m No sound: run DSP1 once to dump dspfirm.cdc\x1b[0m");
-    std::printf("\x1b[29;0H\x1b[37m A=Enter B=Esc Y=Space  START+SELECT=quit\x1b[0m");
+    int y = 8 + 4 * (kh + gap) + 4;
+    b.push_back({4, y, 60, kh, keys::Escape, "ESC"});
+    b.push_back({68, y, 116, kh, keys::Space, "SPACE"});
+    b.push_back({188, y, 60, kh, keys::Backspace, "BKSP"});
+    b.push_back({252, y, 64, kh, keys::Enter, "ENTER"});
+    y += kh + gap;
+    b.push_back({4, y, 60, kh, 0xFFFE, keyboardPage == 0 ? "-.," : "ABC"});
+    b.push_back({68, y, 56, kh, keys::Home, "HOME"});
+    b.push_back({128, y, 56, kh, keys::End, "END"});
+    b.push_back({188, y, 60, kh, keys::Delete, "DEL"});
+    b.push_back({252, y, 64, kh, kToggleKeyboard, "DONE"});
+    return b;
 }
 
-uint16_t HitTest(int px, int py) {
-    int c = px / 8, r = py / 8;
-    for (auto& b : buttons) {
-        // generous hit box: one row above/below the label
-        if (c >= b.col - 1 && c < b.col + b.width && r >= b.row - 1 && r <= b.row + 1) return b.key;
+void DrawButtons(const Surface& s, const std::vector<Button>& bs, u64 now) {
+    for (auto& b : bs) {
+        bool lit = flashKey == b.key && now < flashUntil;
+        Fill(s, b.x, b.y, b.w, b.h, lit ? kBtnDown : kBtn);
+        Frame(s, b.x, b.y, b.w, b.h, kBtnEdge);
+        Text(s, b.x + (b.w - TextWidth(b.label)) / 2, b.y + (b.h - 8) / 2, b.label, lit ? kBlack : kWhite);
     }
-    return 0;
+}
+
+// A tap on the game frame: the menu line is text row 24 (y 192..199). Accept
+// taps a little above it too, and snap to the nearest word on that line.
+uint16_t MenuWordAt(int px, int py, const std::vector<platform::MenuItem>& items) {
+    if (py < 180 || py >= 200 || items.empty()) return 0;
+    int best = -1, bestDist = 1 << 30;
+    for (size_t i = 0; i < items.size(); i++) {
+        int x0 = items[i].col * 8, x1 = (items[i].col + std::max(1, items[i].width)) * 8;
+        int d = px < x0 ? x0 - px : px >= x1 ? px - x1 + 1 : 0;
+        if (d < bestDist) {
+            bestDist = d;
+            best = (int)i;
+        }
+    }
+    if (best < 0 || bestDist > 12) return 0;
+    unsigned char k = (unsigned char)items[best].key;
+    return keys::Letter((char)k);
+}
+
+// ---------------------------------------------------------------------------
+// Screens
+// ---------------------------------------------------------------------------
+void DrawDashboard(const Surface& top, const std::string& prompt, const std::vector<platform::MenuItem>& items) {
+    Fill(top, 0, 0, 400, 240, kDash);
+    Text(top, (400 - TextWidth("CURSE OF THE AZURE BONDS", 2)) / 2, 8, "CURSE OF THE AZURE BONDS", kGold, 2);
+    Fill(top, 16, 30, 368, 1, kBtnEdge);
+
+    int y = 40;
+    std::string p = prompt;
+    while (!p.empty() && p.back() == ' ') p.pop_back();
+    if (!p.empty()) {
+        Text(top, 16, y, p.substr(0, 23), kCyan, 2);
+        y += 22;
+    }
+    if (items.empty()) {
+        Text(top, 16, y + 8, "TAP THE GAME OR USE THE BUTTONS", kGrey);
+    } else {
+        // Menu words in big type, two columns.
+        int shown = std::min<int>((int)items.size(), 12);
+        for (int i = 0; i < shown; i++) {
+            int cx = 16 + (i % 2) * 188, cy = y + (i / 2) * 20;
+            if (cy > 170) break;
+            std::string label = items[i].label;
+            if (label.size() > 11) label.resize(11);
+            Text(top, cx, cy, label, kWhite, 2);
+        }
+    }
+
+    Fill(top, 16, 196, 368, 1, kBtnEdge);
+    Text(top, 16, 202, "TAP A WORD ON THE MENU LINE TO PICK IT", kGrey);
+    Text(top, 16, 214, "D-PAD MOVE/STEP  A ENTER  B ESC  X YES  Y SPACE", kGrey);
+    Text(top, 16, 226, "SELECT KEYBOARD   START+SELECT QUIT", kGrey);
+    if (!ndspOk) Text(top, 16, 186, "NO SOUND: RUN DSP1 ONCE TO DUMP DSPFIRM.CDC", kRed);
+}
+
+void DrawKeyboardTop(const Surface& top) {
+    Fill(top, 0, 0, 400, 240, kBlack);
+    BlitGame(top, 40, 20);
+    Text(top, (400 - TextWidth("KEYBOARD - TAP DONE TO RETURN")) / 2, 226, "KEYBOARD - TAP DONE TO RETURN", kGrey);
 }
 
 // ---------------------------------------------------------------------------
@@ -201,23 +334,6 @@ void EngineEntry(void*) {
     host::RunEngine(opt);
 }
 
-void BlitTop() {
-    u16 w, h;
-    u8* fb = gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &w, &h);  // 240 x 400, column-major, BGR8
-    LightLock_Lock(&frameLock);
-    for (int x = 0; x < 320; x++) {
-        u8* col = fb + (size_t)(x + 40) * 240 * 3;
-        for (int y = 0; y < 200; y++) {
-            const uint8_t* c = framePal + egaFrame[y * 320 + x] * 3;
-            u8* p = col + (239 - (y + 20)) * 3;
-            p[0] = c[2];
-            p[1] = c[1];
-            p[2] = c[0];
-        }
-    }
-    LightLock_Unlock(&frameLock);
-}
-
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -226,9 +342,15 @@ void BlitTop() {
 namespace platform {
 
 void PresentFrame(const int* ega, const uint8_t* palette) {
+    uint8_t f[64][8];
+    bool ok = host::CopyFont(f);  // engine thread: safe to read engine state here
     LightLock_Lock(&frameLock);
     std::memcpy(egaFrame, ega, sizeof egaFrame);
     std::memcpy(framePal, palette, sizeof framePal);
+    if (ok) {
+        std::memcpy(font, f, sizeof font);
+        fontReady = true;
+    }
     LightLock_Unlock(&frameLock);
 }
 
@@ -260,19 +382,15 @@ void MenuShow(const std::string& prompt, const std::vector<MenuItem>& items, boo
     menuItems = items;
     menuAcceptsDirections = acceptsDirections;
     menuVisible = !items.empty();
-    menuVersion++;
     LightLock_Unlock(&menuLock);
 }
 
 void MenuHide() {
     LightLock_Lock(&menuLock);
-    if (!menuItems.empty() || !menuPrompt.empty()) {
-        menuItems.clear();
-        menuPrompt.clear();
-        menuVisible = false;
-        menuAcceptsDirections = true;
-        menuVersion++;
-    }
+    menuItems.clear();
+    menuPrompt.clear();
+    menuVisible = false;
+    menuAcceptsDirections = true;
     LightLock_Unlock(&menuLock);
 }
 
@@ -283,8 +401,6 @@ void EngineStopped() { engineDone = true; }
 int main(int argc, char** argv) {
     osSetSpeedupEnable(true);  // New 3DS: 804 MHz + L2 cache
     gfxInitDefault();
-    gfxSetDoubleBuffering(GFX_TOP, true);
-    consoleInit(GFX_BOTTOM, &bottomConsole);
     romfsInit();
     LightLock_Init(&frameLock);
     LightLock_Init(&menuLock);
@@ -304,7 +420,8 @@ int main(int argc, char** argv) {
         FILE* probe = std::fopen("sdmc:/3ds/goldbox/cotab/GEO2.DAX", "rb");
         if (!probe) probe = std::fopen("sdmc:/3ds/goldbox/cotab/geo2.dax", "rb");
         if (!probe) {
-            consoleSelect(&bottomConsole);
+            PrintConsole con;
+            consoleInit(GFX_BOTTOM, &con);
             std::printf("\x1b[2;1H\x1b[31;1mGame data not found.\x1b[0m\n\n"
                         " Copy the Curse of the Azure Bonds\n"
                         " files (*.DAX, ITEMS, GAME.OVR ...)\n"
@@ -325,6 +442,9 @@ int main(int argc, char** argv) {
         std::fclose(probe);
     }
 
+    gfxSetDoubleBuffering(GFX_TOP, true);
+    gfxSetDoubleBuffering(GFX_BOTTOM, true);
+
     // Engine thread: lower priority than the UI loop, 1 MB stack, on the
     // application core.
     s32 prio = 0x30;
@@ -335,13 +455,22 @@ int main(int argc, char** argv) {
     uint16_t heldKey = 0;
     bool quit = false;
 
+    auto press = [&](uint16_t k, u64 now) {
+        flashKey = k;
+        flashUntil = now + 150;
+        if (k == kToggleKeyboard) keyboardOpen = !keyboardOpen;
+        else if (k == 0xFFFE) keyboardPage ^= 1;
+        else if (k) host::PushKey(k);
+    };
+
     while (aptMainLoop() && !engineDone && !quit) {
         hidScanInput();
         u32 down = hidKeysDown();
         u32 held = hidKeysHeld();
+        u64 now = osGetTime();
 
         if ((held & KEY_START) && (held & KEY_SELECT)) quit = true;
-        if (down & KEY_SELECT && !(held & KEY_START)) keyboardPage ^= 1;
+        if (down & KEY_SELECT && !(held & KEY_START)) keyboardOpen = !keyboardOpen;
 
         if (down & KEY_A) host::PushKey(keys::Enter);
         if (down & KEY_B) host::PushKey(keys::Escape);
@@ -361,7 +490,6 @@ int main(int argc, char** argv) {
         else if (held & (KEY_DDOWN | KEY_CPAD_DOWN)) dirKey = menuMode ? keys::Period : keys::Down;
         else if (held & (KEY_DLEFT | KEY_CPAD_LEFT)) dirKey = menuMode ? keys::Comma : keys::Left;
         else if (held & (KEY_DRIGHT | KEY_CPAD_RIGHT)) dirKey = menuMode ? keys::Period : keys::Right;
-        u64 now = osGetTime();
         if (dirKey != heldKey) {
             heldKey = dirKey;
             if (dirKey) {
@@ -373,17 +501,45 @@ int main(int argc, char** argv) {
             nextRepeat = now + 120;
         }
 
+        std::string prompt;
+        std::vector<platform::MenuItem> items;
+        LightLock_Lock(&menuLock);
+        prompt = menuPrompt;
+        items = menuItems;
+        LightLock_Unlock(&menuLock);
+
+        std::vector<Button> buttons = keyboardOpen ? KeyboardButtons() : StripButtons();
+
         if (down & KEY_TOUCH) {
             touchPosition t;
             hidTouchRead(&t);
-            uint16_t k = HitTest(t.px, t.py);
-            if (k == 0xFFFF) keyboardPage ^= 1;
-            else if (k) host::PushKey(k);
+            uint16_t hit = 0;
+            bool onButton = false;
+            for (auto& b : buttons)
+                if (t.px >= b.x - 1 && t.px < b.x + b.w + 1 && t.py >= b.y - 2 && t.py < b.y + b.h + 2) {
+                    hit = b.key;
+                    onButton = true;
+                    break;
+                }
+            if (!onButton && !keyboardOpen) hit = MenuWordAt(t.px, t.py, items);
+            if (onButton || hit) press(hit, now);
         }
 
-        if (drawnMenuVersion != menuVersion || drawnPage != keyboardPage) DrawUI();
+        u16 w, h;
+        Surface top{gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &w, &h), 400};
+        Surface bottom{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &w, &h), 320};
 
-        BlitTop();
+        if (keyboardOpen) {
+            DrawKeyboardTop(top);
+            Fill(bottom, 0, 0, 320, 240, kDash);
+            DrawButtons(bottom, buttons, now);
+        } else {
+            DrawDashboard(top, prompt, items);
+            BlitGame(bottom, 0, 0);
+            Fill(bottom, 0, 200, 320, 40, kDash);
+            DrawButtons(bottom, buttons, now);
+        }
+
         gfxFlushBuffers();
         gfxSwapBuffers();
         gspWaitForVBlank();

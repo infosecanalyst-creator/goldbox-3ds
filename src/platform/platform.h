@@ -33,9 +33,14 @@ void Sleep(int milliseconds);
 // `acceptsDirections`: the engine also takes arrow keys right now (movement);
 // when false, arrows do nothing in coab, so hosts can map the D-pad to the
 // menu's own highlight keys (',' previous / '.' next).
+// `col`/`width`: where the word sits on the game's menu line (text row 24,
+// pixels y 192..199), in 8-pixel text columns, so a touch host can map a tap
+// on the game screen to the word under the stylus.
 struct MenuItem {
     std::string label;
     char key;
+    int col = 0;
+    int width = 0;
 };
 void MenuShow(const std::string& prompt, const std::vector<MenuItem>& items, bool acceptsDirections);
 void MenuHide();

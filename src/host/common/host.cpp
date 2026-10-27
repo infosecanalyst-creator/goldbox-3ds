@@ -66,6 +66,18 @@ void RunEngine(const Options& opt) {
     platform::EngineStopped();
 }
 
+bool CopyFont(uint8_t out[64][8]) {
+    auto& f = Classes::gbl::dax_8x8d1_201;
+    if (f.IsNull() || f.GetLength(0) < 64 || f.GetLength(1) < 8) return false;
+    bool any = false;
+    for (int g = 0; g < 64; g++)
+        for (int r = 0; r < 8; r++) {
+            out[g][r] = f(g, r);
+            any |= out[g][r] != 0;
+        }
+    return any;
+}
+
 void PushKey(uint16_t ibmKey) { engine::seg049::AddKey(ibmKey); }
 
 void RequestQuit() { engine::seg049::RequestAbort(); }

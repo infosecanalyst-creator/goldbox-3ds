@@ -24,4 +24,9 @@ void PushKey(uint16_t ibmKey);
 // Ask the engine thread to unwind (it exits at its next key wait).
 void RequestQuit();
 
+// Copy the game's own 8x8 font (64 glyphs, indexed by upper-case ASCII % 64,
+// bit 7 = leftmost pixel) once the engine has loaded it. Call from the engine
+// thread (e.g. inside platform::PresentFrame). Returns false if not loaded.
+bool CopyFont(uint8_t out[64][8]);
+
 }  // namespace host
