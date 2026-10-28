@@ -5,6 +5,7 @@
 // on the enum class becomes `(flags & ItemDataFlags::X) != ItemDataFlags::None`
 // (enum class does not compare with int; same value test).
 #include "engine/engine.h"
+#include "platform/platform.h"
 
 namespace engine {
 
@@ -259,6 +260,9 @@ void ovr025::PartySummary(Player player)
     }
 
     //seg037.draw8x8_clear_area(y_pos, 0x26, y_pos, x_pos);
+
+    // goldbox-3ds: tell the host where the party list is (display-only).
+    platform::RosterShow(4, x_pos, 0x26, gbl::TeamList.Count(), gbl::TeamList.IndexOf(player));
 }
 
 

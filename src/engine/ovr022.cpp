@@ -1,6 +1,7 @@
 // engine/ovr022.cpp - translation of coab engine/ovr022.cs (money, treasure, item creation).
 // Original C#: coab (c) Simeon Pilgrim, BSD-3. Translation: goldbox-3ds contributors.
 #include "engine/engine.h"
+#include "platform/platform.h"
 
 namespace engine {
 
@@ -64,6 +65,8 @@ void ovr022::addPlayerGold(int item_weight)
 
 short ovr022::AskNumberValue(byte fgColor, String prompt, int maxValue) // sub_592AD
 {
+    platform::EntryBegin(3, maxValue);  // goldbox-3ds: number pad hint (display-only)
+    struct EntryEndOnExit { ~EntryEndOnExit() { platform::EntryEnd(); } } entryEndOnExit;
     ovr027::ClearPromptAreaNoUpdate();
     seg041::displayString(prompt, 0, fgColor, 0x18, 0);
 

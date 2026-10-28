@@ -79,6 +79,8 @@ bool CopyFont(uint8_t out[64][8]) {
     return any;
 }
 
+int GameStateNow() { return (int)Classes::gbl::game_state; }
+
 void PushKey(uint16_t ibmKey) { engine::seg049::AddKey(ibmKey); }
 
 void RequestQuit() { engine::seg049::RequestAbort(); }

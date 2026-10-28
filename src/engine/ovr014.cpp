@@ -1,4 +1,5 @@
 #include "engine/engine.h"
+#include "platform/platform.h"
 
 namespace engine {
 
@@ -1784,7 +1785,13 @@ char ovr014::aim_sub_menu(bool showTarget, bool showRange, int maxRange, Player 
     gbl::display_hitpoints_ac = true;
     ovr025::CombatDisplayPlayerSummary(target);
 
+    {   // goldbox-3ds: tell the host where the aim is (display-only)
+        auto tp = ovr033::PlayerMapPos(target);
+        auto tl = gbl::mapToBackGroundTile->mapScreenTopLeft;
+        platform::AimShow(0, tp.x, tp.y, tl.x, tl.y);
+    }
     char input_key = ovr027::displayInput(false, 1, gbl::defaultMenuColors, text, "Aim:");
+    platform::AimHide();
 
     return input_key;
 }
@@ -1963,7 +1970,12 @@ bool ovr014::Target(DownedPlayerTile arg_0, bool allowTarget, bool canTargetEmpt
             text = String("Target ") + text;
         }
 
+        {   // goldbox-3ds: tell the host where the cursor is (display-only)
+            auto tl = gbl::mapToBackGroundTile->mapScreenTopLeft;
+            platform::AimShow(1, pos.x, pos.y, tl.x, tl.y);
+        }
         input_key = ovr027::displayInput(false, 1, gbl::defaultMenuColors, text, "(Use Cursor keys) ");
+        platform::AimHide();
 
         switch (input_key)
         {

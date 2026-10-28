@@ -227,7 +227,19 @@ void seg041::press_any_key(String text, bool clearArea, int fgColor,
 }
 
 
+// goldbox-3ds: entry hints for the host (nested calls report only once).
+static int s_entryDepth = 0;
+struct EntryHint {
+    explicit EntryHint(int kind, int maxValue) {
+        if (s_entryDepth++ == 0) platform::EntryBegin(kind, maxValue);
+    }
+    ~EntryHint() {
+        if (--s_entryDepth == 0) platform::EntryEnd();
+    }
+};
+
 String seg041::getUserInputString(byte inputLen, byte bgColor, byte fgColor, String prompt) {
+    EntryHint entryHint(prompt.StartsWith("Character name") ? 2 : 1, 0);
     ovr027::ClearPromptAreaNoUpdate();
 
     displayString(prompt, bgColor, fgColor, 0x18, 0);
@@ -265,6 +277,7 @@ String seg041::getUserInputString(byte inputLen, byte bgColor, byte fgColor, Str
 
 
 ushort seg041::getUserInputShort(byte bgColor, byte fgColor, String prompt) {
+    EntryHint entryHint(3, 0);
     bool good_input;
     int value = 0;
 

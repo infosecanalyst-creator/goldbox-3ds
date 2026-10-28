@@ -1,19 +1,24 @@
 // host/3ds/main.cpp - Nintendo 3DS host (New 3DS / New 3DS XL).
 //
-// Bottom screen (touch): the game itself, 320x200 pixel for pixel, with a
-//   strip of big buttons in the 40 spare pixel rows underneath. Tap a word on
-//   the game's menu line to pick it.
-// Top screen: a dashboard - the current menu in large text and the controls.
-//   While the on-screen keyboard is open (KEYS / SELECT) the keyboard takes the
-//   bottom screen and the game moves to the top screen so you can see what you
-//   are typing.
-// Controls: D-pad / Circle Pad = arrows (or step the menu highlight in plain
-//           menus), A/START = Enter, B = Esc, X = Yes, Y = Space,
-//           L/R/ZL/ZR = diagonal moves (Home/PgUp/End/PgDn),
-//           SELECT = keyboard, START+SELECT = quit.
+// Two layouts, swapped with SELECT:
+//  * Normal: the game on the bottom (touch) screen, 320x200 pixel for pixel,
+//    with a strip of big buttons underneath; a dashboard on the top screen
+//    (the current choices in large type, party, controls).
+//  * Swapped: the game on the top screen; the bottom screen turns the game's
+//    current choices (menu words, list entries, hotkey lines, party members)
+//    into large buttons.
+// A keyboard opens by itself when the game wants text (names, riddles) and a
+// number pad when it asks "How much..."; KEYS opens the keyboard any time.
 //
-// Taps and buttons only ever send the keys the original game expects, so the
-// engine is unchanged (it still matches coab byte for byte in the tests).
+// Taps and buttons only ever send the keys the original game expects (a tap
+// on a list entry walks the highlight there with Home/End, as coab does), so
+// the engine is unchanged (it still matches coab byte for byte in the tests).
+//
+// Controls: D-pad / Circle Pad = move (8 ways in combat), or move the
+//           highlight in menus and lists; A/START = Enter; B = Esc; X = Yes;
+//           Y = Space; L/R = previous/next party member (combat: diagonals
+//           with ZL/ZR); ZL/ZR = page up/down in lists; SELECT = swap screens;
+//           START+SELECT = quit.
 //
 // Data: put the game's files (*.DAX, ITEMS, ...) in sdmc:/3ds/goldbox/cotab/
 // Saves and logs go to sdmc:/3ds/goldbox/user/.
@@ -210,20 +215,51 @@ void BlitGame(const Surface& s, int ox, int oy) {
     LightLock_Unlock(&frameLock);
 }
 
+
 // ---------------------------------------------------------------------------
-// Touch buttons (pixel rectangles on the bottom screen)
+// State published by the engine thread (guarded by menuLock)
 // ---------------------------------------------------------------------------
+struct RosterState {
+    bool shown = false;
+    int row0 = 0, col0 = 0, col1 = 0, count = 0, selected = -1;
+};
+RosterState rosterState;
+struct AimState {
+    bool active = false;
+    int manual = 0, mx = 0, my = 0, tx = 0, ty = 0;
+};
+AimState aimState;
+int entryKind = 0;  // 0 none, 1 text, 2 character name, 3 number
+int entryMax = 0;
+
+constexpr int kStateWilderness = 3, kStateDungeon = 4, kStateCombat = 5;
+
+// ---------------------------------------------------------------------------
+// Buttons
+// ---------------------------------------------------------------------------
+// Special (non-game) button codes.
 constexpr uint16_t kToggleKeyboard = 0xFFFF;
+constexpr uint16_t kKbPage = 0xFFFE;
+constexpr uint16_t kSwap = 0xFFFD;
+constexpr uint16_t kRandomName = 0xFFFC;
+constexpr uint16_t kNumAll = 0xFFFB;
+constexpr uint16_t kNumClear = 0xFFFA;
 
 struct Button {
     int x, y, w, h;
-    uint16_t key;
+    uint16_t key;  // key to send (or a special code); 0 = see listRow / member
     std::string label;
+    int listRow = -1;  // tap walks the list highlight here
+    int member = -1;   // tap selects this party member
+    bool selected = false;
 };
 
 bool keyboardOpen = false;
-int keyboardPage = 0;  // 0 = letters, 1 = digits/symbols
+bool keyboardAuto = false;  // opened by an entry hint (closes with it)
+int keyboardPage = 0;       // 0 = letters, 1 = digits/symbols
+bool swapped = false;
 uint16_t flashKey = 0;  // last pressed button, drawn highlighted briefly
+int flashRow = -1, flashMember = -1;
 u64 flashUntil = 0;
 
 std::vector<Button> StripButtons() {
@@ -232,14 +268,14 @@ std::vector<Button> StripButtons() {
         const char* label;
         uint16_t key;
     } defs[] = {{"ESC", keys::Escape}, {"YES", (uint16_t)'Y'}, {"NO", (uint16_t)'N'},
-                {"ENTER", keys::Enter}, {"SPACE", keys::Space}, {"KEYS", kToggleKeyboard}};
+                {"ENTER", keys::Enter}, {"KEYS", kToggleKeyboard}, {"SWAP", kSwap}};
     std::vector<Button> b;
     int n = 6, gap = 3, w = (320 - gap * (n + 1)) / n;
     for (int i = 0; i < n; i++) b.push_back({gap + i * (w + gap), 203, w, 34, defs[i].key, defs[i].label});
     return b;
 }
 
-std::vector<Button> KeyboardButtons() {
+std::vector<Button> KeyboardButtons(bool nameEntry) {
     std::vector<Button> b;
     static const char* letters[] = {"1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"};
     static const char* symbols[] = {"1234567890", "-.,", "", ""};
@@ -260,45 +296,59 @@ std::vector<Button> KeyboardButtons() {
     b.push_back({188, y, 60, kh, keys::Backspace, "BKSP"});
     b.push_back({252, y, 64, kh, keys::Enter, "ENTER"});
     y += kh + gap;
-    b.push_back({4, y, 60, kh, 0xFFFE, keyboardPage == 0 ? "-.," : "ABC"});
-    b.push_back({68, y, 56, kh, keys::Home, "HOME"});
-    b.push_back({128, y, 56, kh, keys::End, "END"});
-    b.push_back({188, y, 60, kh, keys::Delete, "DEL"});
-    b.push_back({252, y, 64, kh, kToggleKeyboard, "DONE"});
+    b.push_back({4, y, 60, kh, kKbPage, keyboardPage == 0 ? "-.," : "ABC"});
+    if (nameEntry) b.push_back({68, y, 116, kh, kRandomName, "RANDOM"});
+    else b.push_back({68, y, 116, kh, keys::Delete, "DEL"});
+    b.push_back({188, y, 128, kh, kToggleKeyboard, "HIDE"});
+    return b;
+}
+
+std::vector<Button> NumberPadButtons(int maxValue) {
+    std::vector<Button> b;
+    const int kw = 64, kh = 40, gap = 6, x0 = (320 - (3 * kw + 2 * gap)) / 2, y0 = 30;
+    static const char* digits = "789456123";
+    for (int i = 0; i < 9; i++)
+        b.push_back({x0 + (i % 3) * (kw + gap), y0 + (i / 3) * (kh + gap), kw, kh, (uint16_t)digits[i], std::string(1, digits[i])});
+    int y = y0 + 3 * (kh + gap);
+    b.push_back({x0, y, kw, kh, kNumClear, "CLEAR"});
+    b.push_back({x0 + kw + gap, y, kw, kh, (uint16_t)'0', "0"});
+    b.push_back({x0 + 2 * (kw + gap), y, kw, kh, keys::Backspace, "BKSP"});
+    // Right column: ALL / OK / CANCEL
+    int xr = x0 + 3 * (kw + gap) + 4, wr = 320 - xr - 4;
+    if (maxValue > 0) b.push_back({xr, y0, wr, kh, kNumAll, "ALL"});
+    b.push_back({xr, y0 + (kh + gap), wr, 2 * kh + gap, keys::Enter, "OK"});
+    b.push_back({xr, y, wr, kh, keys::Escape, "CANCEL"});
     return b;
 }
 
 void DrawButtons(const Surface& s, const std::vector<Button>& bs, u64 now) {
     for (auto& b : bs) {
-        bool lit = flashKey == b.key && now < flashUntil;
-        Fill(s, b.x, b.y, b.w, b.h, lit ? kBtnDown : kBtn);
-        Frame(s, b.x, b.y, b.w, b.h, kBtnEdge);
-        Text(s, b.x + (b.w - TextWidth(b.label)) / 2, b.y + (b.h - 8) / 2, b.label, lit ? kBlack : kWhite);
+        bool lit = now < flashUntil && ((b.key && flashKey == b.key) || (b.listRow >= 0 && flashRow == b.listRow) ||
+                                        (b.member >= 0 && flashMember == b.member));
+        RGB face = lit ? kBtnDown : b.selected ? RGB{90, 70, 20} : kBtn;
+        Fill(s, b.x, b.y, b.w, b.h, face);
+        Frame(s, b.x, b.y, b.w, b.h, b.selected ? kGold : kBtnEdge);
+        std::string label = b.label;
+        int maxChars = std::max(1, (b.w - 6) / 8);
+        if ((int)label.size() > maxChars) label.resize(maxChars);
+        Text(s, b.x + (b.w - TextWidth(label)) / 2, b.y + (b.h - 8) / 2, label, lit ? kBlack : b.selected ? kGold : kWhite);
     }
 }
 
-// A tap on the game frame: the menu line is text row 24 (y 192..199). Accept
-// taps a little above it too, and snap to the nearest word on that line.
-uint16_t MenuWordAt(int px, int py, const std::vector<platform::MenuItem>& items) {
-    if (py < 180 || py >= 200 || items.empty()) return 0;
-    int best = -1, bestDist = 1 << 30;
-    for (size_t i = 0; i < items.size(); i++) {
-        int x0 = items[i].col * 8, x1 = (items[i].col + std::max(1, items[i].width)) * 8;
-        int d = px < x0 ? x0 - px : px >= x1 ? px - x1 + 1 : 0;
-        if (d < bestDist) {
-            bestDist = d;
-            best = (int)i;
-        }
-    }
-    if (best < 0 || bestDist > 12) return 0;
-    unsigned char k = (unsigned char)items[best].key;
-    return keys::Letter((char)k);
+const Button* ButtonAt(const std::vector<Button>& bs, int px, int py) {
+    for (auto& b : bs)
+        if (px >= b.x - 1 && px < b.x + b.w + 1 && py >= b.y - 2 && py < b.y + b.h + 2) return &b;
+    return nullptr;
 }
 
+// ---------------------------------------------------------------------------
+// Reading the game screen
+// ---------------------------------------------------------------------------
 // Is the character the game drew at (row, col) still on screen? (Pictures
 // can be drawn over old text.) Compares the frame's pixels with the glyph.
 // Call with frameLock held.
 bool CellShows(int r, int c) {
+    if ((unsigned)r >= 25u || (unsigned)c >= 40u) return false;
     const Cell& cell = textMap[r][c];
     const uint8_t* g = ReadableGlyph((unsigned char)cell.ch);
     if (!g || cell.fg == cell.bg) return false;
@@ -308,6 +358,32 @@ bool CellShows(int r, int c) {
             if (egaFrame[(r * 8 + y) * 320 + c * 8 + x] != want) return false;
         }
     return true;
+}
+
+bool CellShowsLocked(int r, int c) {
+    LightLock_Lock(&frameLock);
+    bool v = CellShows(r, c);
+    LightLock_Unlock(&frameLock);
+    return v;
+}
+
+// Text of one row of the game screen, as the game last drew it.
+std::string RowText(int r, int c0, int c1) {
+    std::string t;
+    LightLock_Lock(&frameLock);
+    for (int c = std::max(0, c0); c <= std::min(39, c1); c++) t += CellShows(r, c) ? textMap[r][c].ch : ' ';
+    LightLock_Unlock(&frameLock);
+    while (!t.empty() && t.back() == ' ') t.pop_back();
+    size_t f = t.find_first_not_of(' ');
+    return f == std::string::npos ? std::string() : t.substr(f);
+}
+
+// Menu words actually visible on the menu line (some menus use hidden keys).
+std::vector<platform::MenuItem> VisibleWords(const std::vector<platform::MenuItem>& items) {
+    std::vector<platform::MenuItem> out;
+    for (auto& it : items)
+        if (CellShowsLocked(24, it.col)) out.push_back(it);
+    return out;
 }
 
 // Hotkey menus such as "Create New Character / Add Character ...": the game
@@ -349,30 +425,15 @@ std::vector<HotLine> FindHotLines(const std::vector<platform::MenuItem>& items) 
     return out;
 }
 
-uint16_t HotLineAt(int px, int py, const std::vector<HotLine>& lines) {
-    int best = -1, bestDist = 1 << 30;
-    for (size_t i = 0; i < lines.size(); i++) {
-        int x0 = lines[i].c0 * 8 - 8, x1 = (lines[i].c1 + 1) * 8 + 8;
-        if (px < x0 || px >= x1) continue;
-        int cy = lines[i].row * 8 + 4, d = py > cy ? py - cy : cy - py;
-        if (d < bestDist) {
-            bestDist = d;
-            best = (int)i;
-        }
-    }
-    return (best >= 0 && bestDist <= 8) ? lines[best].key : 0;
+// Is the party list on screen right now? (First letter of each name visible.)
+bool RosterVisible(const RosterState& r) {
+    if (!r.shown || r.count <= 0) return false;
+    for (int i = 0; i < r.count; i++)
+        if (!CellShowsLocked(r.row0 + i, r.col0)) return false;
+    return true;
 }
 
-// Text of one row of the game screen, as the game last drew it.
-std::string RowText(int r, int c0, int c1) {
-    std::string t;
-    LightLock_Lock(&frameLock);
-    for (int c = std::max(0, c0); c <= std::min(39, c1); c++) t += CellShows(r, c) ? textMap[r][c].ch : ' ';
-    LightLock_Unlock(&frameLock);
-    while (!t.empty() && t.back() == ' ') t.pop_back();
-    size_t f = t.find_first_not_of(' ');
-    return f == std::string::npos ? std::string() : t.substr(f);
-}
+std::string MemberName(const RosterState& r, int i) { return RowText(r.row0 + i, r.col0, std::min(r.col1, r.col0 + 14)); }
 
 // The list's own action word ("Select", "Use" ...): the first menu word that
 // is not Next / Prev / Exit.
@@ -385,62 +446,232 @@ uint16_t ListActionKey(const std::vector<platform::MenuItem>& items) {
     return keys::Enter;
 }
 
+bool MenuSaysContinue(const std::string& prompt, const std::vector<platform::MenuItem>& items) {
+    std::string all = prompt;
+    for (auto& it : items) all += " " + it.label;
+    for (auto& ch : all) ch = (char)std::tolower((unsigned char)ch);
+    return all.find("continue") != std::string::npos;
+}
+
+// ---------------------------------------------------------------------------
+// Walking a highlight to a tapped entry (lists and the party list): one
+// Home/End per step, waiting for the game to show each step.
+// ---------------------------------------------------------------------------
+struct Walk {
+    int kind = 0;  // 0 none, 1 list row, 2 party member, 3 combat aim square
+    int target = 0, steps = 0, seenAtPush = -1;
+    u64 nextStep = 0;
+    int ax = 0, ay = 0;  // kind 3: map square to aim at
+    u64 started = 0;
+};
+Walk walk;
+
+void StartWalk(int kind, int target, u64 now) { walk = {kind, target, 0, -1, now, 0, 0, now}; }
+
+// ---------------------------------------------------------------------------
+// Taps
+// ---------------------------------------------------------------------------
+struct Context {
+    std::string prompt;
+    std::vector<platform::MenuItem> items, words;
+    ListState list;
+    RosterState roster;
+    bool rosterVisible = false;
+    std::vector<HotLine> hot;
+    bool acceptsDirections = true;
+    AimState aim;
+    int state = 0;
+    int entry = 0, entryMaxValue = 0;
+};
+
+// A tap on the game frame (game at 0,0 on the bottom screen).
+// Returns a key to send (0: none); may start a walk instead.
+uint16_t GameTap(int px, int py, const Context& cx, u64 now) {
+    int r = py / 8;
+    // Combat aiming: tap a square on the combat map (7x7 squares of 24 px).
+    if (cx.aim.active && px < 7 * 24 && py < 7 * 24) {
+        int ax = px / 24 + cx.aim.tx, ay = py / 24 + cx.aim.ty;
+        if (ax == cx.aim.mx && ay == cx.aim.my) return (uint16_t)'T';
+        StartWalk(3, 0, now);
+        walk.ax = ax;
+        walk.ay = ay;
+        return cx.aim.manual ? 0 : (uint16_t)'M';  // "Manual" gives a free cursor
+    }
+    const ListState& list = cx.list;
+    if (list.active && r >= list.row0 && r < list.row0 + list.rows && px >= list.col0 * 8 - 8 && px < (list.col1 + 1) * 8 + 8) {
+        int target = r - list.row0;
+        if (target == list.hl) return ListActionKey(cx.items);
+        StartWalk(1, target, now);
+        flashRow = target;
+        return 0;
+    }
+    // Menu line: nearest visible word.
+    if (py >= 180 && !cx.words.empty()) {
+        int best = -1, bestDist = 1 << 30;
+        for (size_t i = 0; i < cx.words.size(); i++) {
+            int x0 = cx.words[i].col * 8, x1 = (cx.words[i].col + std::max(1, cx.words[i].width)) * 8;
+            int d = px < x0 ? x0 - px : px >= x1 ? px - x1 + 1 : 0;
+            if (d < bestDist) {
+                bestDist = d;
+                best = (int)i;
+            }
+        }
+        if (best >= 0 && bestDist <= 12) return keys::Letter(cx.words[best].key);
+    }
+    // Hotkey lines.
+    {
+        int best = -1, bestDist = 1 << 30;
+        for (size_t i = 0; i < cx.hot.size(); i++) {
+            int x0 = cx.hot[i].c0 * 8 - 8, x1 = (cx.hot[i].c1 + 1) * 8 + 8;
+            if (px < x0 || px >= x1) continue;
+            int cy = cx.hot[i].row * 8 + 4, d = py > cy ? py - cy : cy - py;
+            if (d < bestDist) {
+                bestDist = d;
+                best = (int)i;
+            }
+        }
+        if (best >= 0 && bestDist <= 8) return cx.hot[best].key;
+    }
+    // Party list: select the tapped member.
+    if (cx.rosterVisible && !list.active && r >= cx.roster.row0 && r < cx.roster.row0 + cx.roster.count &&
+        px >= cx.roster.col0 * 8 - 4) {
+        int target = r - cx.roster.row0;
+        if (target != cx.roster.selected) {
+            StartWalk(2, target, now);
+            flashMember = target;
+        }
+        return 0;
+    }
+    // 3D view (88x88 at 16,16): forward / turn left / turn right / turn round.
+    if (cx.state == kStateDungeon && cx.acceptsDirections && !cx.items.empty() && px >= 16 && px < 104 && py >= 16 &&
+        py < 104) {
+        if (px < 45) return keys::Left;
+        if (px >= 75) return keys::Right;
+        return py < 70 ? keys::Up : keys::Down;
+    }
+    // "Press enter to continue" and plain key waits: tap anywhere.
+    if (cx.items.empty() || MenuSaysContinue(cx.prompt, cx.items)) return keys::Enter;
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// The swapped layout: the game's choices as large buttons.
+// ---------------------------------------------------------------------------
+std::vector<Button> ChoiceButtons(const Context& cx) {
+    std::vector<Button> b;
+    const int x0 = 4, w = 312;
+    int y = 4;
+    if (cx.list.active) {
+        // Up to 6 entries around the highlight.
+        int first = std::max(0, std::min(cx.list.hl - 2, cx.list.rows - 6));
+        for (int i = first; i < cx.list.rows && i < first + 6; i++) {
+            Button bt{x0, y, w, 24, 0, RowText(cx.list.row0 + i, cx.list.col0, cx.list.col1)};
+            bt.listRow = i;
+            bt.selected = i == cx.list.hl;
+            if (!bt.label.empty()) {
+                b.push_back(bt);
+                y += 27;
+            }
+        }
+    } else if (!cx.hot.empty()) {
+        for (size_t i = 0; i < cx.hot.size() && i < 6; i++) {
+            b.push_back({x0, y, w, 24, cx.hot[i].key, cx.hot[i].label});
+            y += 27;
+        }
+    }
+    // Menu words: up to 4 per row.
+    if (!cx.words.empty() && y < 170) {
+        int n = (int)cx.words.size(), perRow = std::min(4, n);
+        int bw = (w - (perRow - 1) * 4) / perRow;
+        for (int i = 0; i < n && y + 28 <= 200; i++) {
+            int col = i % perRow;
+            b.push_back({x0 + col * (bw + 4), y, bw, 26, keys::Letter(cx.words[i].key), cx.words[i].label});
+            if (col == perRow - 1 || i == n - 1) y += 30;
+        }
+    }
+    // Party members: 2 per row.
+    if (cx.rosterVisible && !cx.list.active && y + 24 <= 200) {
+        int bw = (w - 4) / 2;
+        for (int i = 0; i < cx.roster.count && y + 24 <= 200; i++) {
+            Button bt{x0 + (i % 2) * (bw + 4), y, bw, 22, 0, MemberName(cx.roster, i)};
+            bt.member = i;
+            bt.selected = i == cx.roster.selected;
+            b.push_back(bt);
+            if (i % 2 == 1 || i == cx.roster.count - 1) y += 25;
+        }
+    }
+    if (b.empty() && (cx.items.empty() || MenuSaysContinue(cx.prompt, cx.items)))
+        b.push_back({x0, 60, w, 60, keys::Enter, "CONTINUE"});
+    return b;
+}
+
 // ---------------------------------------------------------------------------
 // Screens
 // ---------------------------------------------------------------------------
-void DrawDashboard(const Surface& top, const std::string& prompt, const std::vector<platform::MenuItem>& items,
-                   const std::vector<HotLine>& hot, const ListState& list) {
+void DrawDashboard(const Surface& top, const Context& cx) {
     Fill(top, 0, 0, 400, 240, kDash);
-    Text(top, (400 - TextWidth("Curse of the Azure Bonds", 2)) / 2, 8, "Curse of the Azure Bonds", kGold, 2);
-    Fill(top, 16, 30, 368, 1, kBtnEdge);
+    Text(top, (400 - TextWidth("Curse of the Azure Bonds", 2)) / 2, 6, "Curse of the Azure Bonds", kGold, 2);
+    Fill(top, 16, 26, 368, 1, kBtnEdge);
 
-    int y = 40;
-    std::string p = prompt;
+    int y = 32;
+    std::string p = cx.prompt;
     while (!p.empty() && p.back() == ' ') p.pop_back();
     if (!p.empty()) {
         Text(top, 16, y, p.substr(0, 23), kCyan, 2);
-        y += 22;
+        y += 20;
     }
-    if (list.active) {
+    if (cx.list.active) {
         // The list itself, large, with the highlighted entry in gold.
-        int first = std::max(0, std::min(list.hl - 3, list.rows - 7));
-        for (int i = first; i < list.rows && i < first + 7; i++) {
-            std::string t = RowText(list.row0 + i, list.col0, list.col1);
+        int first = std::max(0, std::min(cx.list.hl - 3, cx.list.rows - 7));
+        for (int i = first; i < cx.list.rows && i < first + 7; i++) {
+            std::string t = RowText(cx.list.row0 + i, cx.list.col0, cx.list.col1);
             if (t.size() > 22) t.resize(22);
-            Text(top, 24, y + (i - first) * 18, t, i == list.hl ? kGold : kWhite, 2);
+            Text(top, 24, y + (i - first) * 18, t, i == cx.list.hl ? kGold : kWhite, 2);
         }
-    } else if (!hot.empty()) {
-        for (size_t i = 0; i < hot.size() && i < 7; i++) {
-            std::string t = hot[i].label;
+    } else if (!cx.hot.empty()) {
+        for (size_t i = 0; i < cx.hot.size() && i < 7; i++) {
+            std::string t = cx.hot[i].label;
             if (t.size() > 22) t.resize(22);
             Text(top, 24, y + (int)i * 18, t, kWhite, 2);
         }
-    } else if (items.empty()) {
-        Text(top, 16, y + 8, "Tap the game or use the buttons", kGrey);
-    } else {
-        // Menu words in big type, two columns.
-        int shown = std::min<int>((int)items.size(), 12);
+    } else if (!cx.words.empty()) {
+        int shown = std::min<int>((int)cx.words.size(), 8);
         for (int i = 0; i < shown; i++) {
-            int cx = 16 + (i % 2) * 188, cy = y + (i / 2) * 20;
-            if (cy > 170) break;
-            std::string label = items[i].label;
+            std::string label = cx.words[i].label;
             if (label.size() > 11) label.resize(11);
-            Text(top, cx, cy, label, kWhite, 2);
+            Text(top, 16 + (i % 2) * 188, y + (i / 2) * 18, label, kWhite, 2);
         }
+        y += ((shown + 1) / 2) * 18 + 4;
+        // Party, when there is room.
+        if (cx.rosterVisible) {
+            for (int i = 0; i < cx.roster.count && y < 176; i++, y += 12)
+                Text(top, 24, y, (i == cx.roster.selected ? "> " : "  ") + MemberName(cx.roster, i),
+                     i == cx.roster.selected ? kGold : kGrey);
+        }
+    } else {
+        Text(top, 16, y + 8, "Tap the game to continue", kGrey);
     }
 
-    Fill(top, 16, 196, 368, 1, kBtnEdge);
-    Text(top, 16, 202, "Tap a choice on the game screen to pick it", kGrey);
-    Text(top, 16, 214, "D-pad move/choose  A Enter  B Esc  X Yes", kGrey);
-    Text(top, 16, 226, "Y Space  SELECT keyboard  START+SELECT quit", kGrey);
-    if (!ndspOk) Text(top, 16, 186, "No sound: run DSP1 once (dspfirm.cdc)", kRed);
+    Fill(top, 16, 190, 368, 1, kBtnEdge);
+    Text(top, 16, 196, "Tap a choice on the game screen to pick it", kGrey);
+    Text(top, 16, 208, "D-pad move/choose  A Enter  B Esc  X Yes", kGrey);
+    Text(top, 16, 220, "L/R party member  ZL/ZR page  SELECT swap", kGrey);
+    if (!ndspOk) Text(top, 16, 180, "No sound: run DSP1 once (dspfirm.cdc)", kRed);
 }
 
-void DrawKeyboardTop(const Surface& top) {
+void DrawGameOnTop(const Surface& top, const char* caption) {
     Fill(top, 0, 0, 400, 240, kBlack);
     BlitGame(top, 40, 20);
-    Text(top, (400 - TextWidth("Keyboard - tap DONE to return")) / 2, 226, "Keyboard - tap DONE to return", kGrey);
+    Text(top, (400 - TextWidth(caption)) / 2, 226, caption, kGrey);
 }
+
+// ---------------------------------------------------------------------------
+// Random names for new characters (Forgotten Realms flavour).
+// ---------------------------------------------------------------------------
+const char* const kNames[] = {"Aldric", "Brenna", "Corwin", "Dagny", "Elric", "Fenna", "Gareth", "Hilde",
+                              "Ivor", "Jessa", "Kerrik", "Lyra", "Marek", "Nessa", "Orrin", "Perrin",
+                              "Quillon", "Rhiannon", "Soren", "Talia", "Ulric", "Vala", "Wulfgar", "Xandra",
+                              "Yorick", "Zara", "Thorin", "Mirabel", "Garrick", "Seraphine", "Dorn", "Elowen"};
 
 // ---------------------------------------------------------------------------
 // Engine thread
@@ -497,6 +728,15 @@ void MenuShow(const std::string& prompt, const std::vector<MenuItem>& items, boo
     LightLock_Unlock(&menuLock);
 }
 
+void MenuHide() {
+    LightLock_Lock(&menuLock);
+    menuItems.clear();
+    menuPrompt.clear();
+    menuVisible = false;
+    menuAcceptsDirections = true;
+    LightLock_Unlock(&menuLock);
+}
+
 void ListShow(int firstRow, int firstCol, int lastCol, int rows, int highlightRow) {
     LightLock_Lock(&menuLock);
     listState = {true, firstRow, firstCol, lastCol, rows, highlightRow};
@@ -509,20 +749,43 @@ void ListHide() {
     LightLock_Unlock(&menuLock);
 }
 
+void RosterShow(int firstRow, int firstCol, int lastCol, int count, int selected) {
+    LightLock_Lock(&menuLock);
+    rosterState = {true, firstRow, firstCol, lastCol, count, selected};
+    LightLock_Unlock(&menuLock);
+}
+
+void AimShow(int manual, int mapX, int mapY, int topX, int topY) {
+    LightLock_Lock(&menuLock);
+    aimState = {true, manual, mapX, mapY, topX, topY};
+    LightLock_Unlock(&menuLock);
+}
+
+void AimHide() {
+    LightLock_Lock(&menuLock);
+    aimState.active = false;
+    LightLock_Unlock(&menuLock);
+}
+
+void EntryBegin(int kind, int maxValue) {
+    LightLock_Lock(&menuLock);
+    entryKind = kind;
+    entryMax = maxValue;
+    LightLock_Unlock(&menuLock);
+}
+
+void EntryEnd() {
+    LightLock_Lock(&menuLock);
+    entryKind = 0;
+    entryMax = 0;
+    LightLock_Unlock(&menuLock);
+}
+
 void TextDrawn(int row, int col, char ch, int fg, int bg) {
     if ((unsigned)row >= 25u || (unsigned)col >= 40u) return;
     LightLock_Lock(&frameLock);
     textMap[row][col] = {ch, (uint8_t)fg, (uint8_t)bg};
     LightLock_Unlock(&frameLock);
-}
-
-void MenuHide() {
-    LightLock_Lock(&menuLock);
-    menuItems.clear();
-    menuPrompt.clear();
-    menuVisible = false;
-    menuAcceptsDirections = true;
-    LightLock_Unlock(&menuLock);
 }
 
 void EngineStopped() { engineDone = true; }
@@ -575,6 +838,7 @@ int main(int argc, char** argv) {
 
     gfxSetDoubleBuffering(GFX_TOP, true);
     gfxSetDoubleBuffering(GFX_BOTTOM, true);
+    std::srand((unsigned)osGetTime());
 
     // Engine thread: lower priority than the UI loop, 1 MB stack, on the
     // application core.
@@ -584,17 +848,10 @@ int main(int argc, char** argv) {
 
     u64 nextRepeat = 0;
     uint16_t heldKey = 0;
-    int pendingRow = -1, pendingSteps = 0, hlAtPush = -1;
-    u64 nextStep = 0;
+    bool dirSent = false;
+    u64 dirSince = 0;
+    int lastEntry = 0;
     bool quit = false;
-
-    auto press = [&](uint16_t k, u64 now) {
-        flashKey = k;
-        flashUntil = now + 150;
-        if (k == kToggleKeyboard) keyboardOpen = !keyboardOpen;
-        else if (k == 0xFFFE) keyboardPage ^= 1;
-        else if (k) host::PushKey(k);
-    };
 
     while (aptMainLoop() && !engineDone && !quit) {
         hidScanInput();
@@ -602,113 +859,230 @@ int main(int argc, char** argv) {
         u32 held = hidKeysHeld();
         u64 now = osGetTime();
 
+        // Snapshot what the engine has published.
+        Context cx;
+        LightLock_Lock(&menuLock);
+        cx.prompt = menuPrompt;
+        cx.items = menuItems;
+        cx.list = listState;
+        cx.roster = rosterState;
+        cx.aim = aimState;
+        cx.acceptsDirections = menuAcceptsDirections;
+        cx.entry = entryKind;
+        cx.entryMaxValue = entryMax;
+        LightLock_Unlock(&menuLock);
+        cx.state = host::GameStateNow();
+        bool combat = cx.state == kStateCombat;
+        bool menuMode = !cx.items.empty() && !cx.acceptsDirections;
+
+        // Keyboard opens and closes by itself for text entry.
+        if (cx.entry != lastEntry) {
+            if (cx.entry == 1 || cx.entry == 2) {
+                keyboardOpen = true;
+                keyboardAuto = true;
+                keyboardPage = 0;
+            } else if (keyboardAuto) {
+                keyboardOpen = false;
+                keyboardAuto = false;
+            }
+            lastEntry = cx.entry;
+        }
+        bool numberPad = cx.entry == 3;
+        bool overlay = keyboardOpen || numberPad;
+
+        if (!overlay) {
+            cx.words = VisibleWords(cx.items);
+            cx.hot = cx.list.active ? std::vector<HotLine>() : FindHotLines(cx.items);
+            cx.rosterVisible = RosterVisible(cx.roster);
+        }
+
+        // ---- buttons ----
         if ((held & KEY_START) && (held & KEY_SELECT)) quit = true;
-        if (down & KEY_SELECT && !(held & KEY_START)) keyboardOpen = !keyboardOpen;
+        if ((down & KEY_SELECT) && !(held & KEY_START)) swapped = !swapped;
 
         if (down & KEY_A) host::PushKey(keys::Enter);
         if ((down & KEY_START) && !(held & KEY_SELECT)) host::PushKey(keys::Enter);
         if (down & KEY_B) host::PushKey(keys::Escape);
         if (down & KEY_Y) host::PushKey(keys::Space);
         if (down & KEY_X) host::PushKey(keys::Letter('Y'));  // common "Yes" answer
-        if (down & KEY_L) host::PushKey(keys::Home);
-        if (down & KEY_R) host::PushKey(keys::PageUp);
-        if (down & KEY_ZL) host::PushKey(keys::End);
-        if (down & KEY_ZR) host::PushKey(keys::PageDown);
+        if (combat) {
+            // Shoulders = diagonals: left shoulders go left, right go right.
+            if (down & KEY_L) host::PushKey(keys::Home);
+            if (down & KEY_ZL) host::PushKey(keys::End);
+            if (down & KEY_R) host::PushKey(keys::PageUp);
+            if (down & KEY_ZR) host::PushKey(keys::PageDown);
+        } else {
+            // coab: Home / End = previous / next party member; PgUp / PgDn
+            // page through long lists.
+            if (down & KEY_L) host::PushKey(keys::Home);
+            if (down & KEY_R) host::PushKey(keys::End);
+            if (down & KEY_ZL) host::PushKey(keys::PageUp);
+            if (down & KEY_ZR) host::PushKey(keys::PageDown);
+        }
 
-        // Directions with key repeat (D-pad, Circle Pad, C-stick).
-        // In a plain menu (no movement accepted) coab moves the highlight with
-        // ',' and '.', so the D-pad does that; A then picks the highlighted item.
-        // In a scrolling list coab moves the highlight with Home / End, so
-        // up / down send those and left / right step the menu words.
-        ListState list;
-        LightLock_Lock(&menuLock);
-        list = listState;
-        LightLock_Unlock(&menuLock);
-        bool menuMode = menuVisible && !menuAcceptsDirections;
+        // ---- directions (D-pad, Circle Pad) with key repeat ----
+        bool up = held & (KEY_DUP | KEY_CPAD_UP), dn = held & (KEY_DDOWN | KEY_CPAD_DOWN);
+        bool lf = held & (KEY_DLEFT | KEY_CPAD_LEFT), rt = held & (KEY_DRIGHT | KEY_CPAD_RIGHT);
         uint16_t dirKey = 0;
-        if (held & (KEY_DUP | KEY_CPAD_UP)) dirKey = list.active ? keys::Home : menuMode ? keys::Comma : keys::Up;
-        else if (held & (KEY_DDOWN | KEY_CPAD_DOWN)) dirKey = list.active ? keys::End : menuMode ? keys::Period : keys::Down;
-        else if (held & (KEY_DLEFT | KEY_CPAD_LEFT)) dirKey = (menuMode || list.active) ? keys::Comma : keys::Left;
-        else if (held & (KEY_DRIGHT | KEY_CPAD_RIGHT)) dirKey = (menuMode || list.active) ? keys::Period : keys::Right;
+        if (overlay) {
+            dirKey = 0;
+        } else if (cx.list.active) {
+            // coab lists move their highlight with Home / End.
+            if (up) dirKey = keys::Home;
+            else if (dn) dirKey = keys::End;
+            else if (lf) dirKey = keys::Comma;
+            else if (rt) dirKey = keys::Period;
+        } else if (menuMode) {
+            if (up || lf) dirKey = keys::Comma;
+            else if (dn || rt) dirKey = keys::Period;
+        } else if (combat) {
+            if (up && lf) dirKey = keys::Home;
+            else if (up && rt) dirKey = keys::PageUp;
+            else if (dn && lf) dirKey = keys::End;
+            else if (dn && rt) dirKey = keys::PageDown;
+            else if (up) dirKey = keys::Up;
+            else if (dn) dirKey = keys::Down;
+            else if (lf) dirKey = keys::Left;
+            else if (rt) dirKey = keys::Right;
+        } else {
+            if (up) dirKey = keys::Up;
+            else if (dn) dirKey = keys::Down;
+            else if (lf) dirKey = keys::Left;
+            else if (rt) dirKey = keys::Right;
+        }
+        // In combat a step can't be taken back, so give a diagonal ~80 ms to
+        // form (both directions pressed) before the first move is sent.
         if (dirKey != heldKey) {
             heldKey = dirKey;
             if (dirKey) {
-                host::PushKey(dirKey);
-                nextRepeat = now + 350;
+                if (combat) {
+                    dirSent = false;
+                    dirSince = now;
+                } else {
+                    host::PushKey(dirKey);
+                    dirSent = true;
+                    nextRepeat = now + 350;
+                }
             }
-        } else if (dirKey && now >= nextRepeat) {
+        } else if (dirKey && !dirSent && now >= dirSince + 80) {
+            host::PushKey(dirKey);
+            dirSent = true;
+            nextRepeat = now + 350;
+        } else if (dirKey && dirSent && now >= nextRepeat) {
             host::PushKey(dirKey);
             nextRepeat = now + 120;
         }
 
-        std::string prompt;
-        std::vector<platform::MenuItem> items;
-        LightLock_Lock(&menuLock);
-        prompt = menuPrompt;
-        items = menuItems;
-        LightLock_Unlock(&menuLock);
+        // ---- walking a highlight to a tapped entry ----
+        if (walk.kind == 3) {
+            // Step the free aim cursor one square at a time, then Target.
+            const AimState& a = cx.aim;
+            int cur = a.mx * 100 + a.my;
+            if (walk.steps > 60 || (!a.active && now > walk.started + 1500)) walk.kind = 0;
+            else if (a.active && a.manual) {
+                if (a.mx == walk.ax && a.my == walk.ay) {
+                    host::PushKey((uint16_t)'T');
+                    walk.kind = 0;
+                } else if (now >= walk.nextStep && (cur != walk.seenAtPush || now >= walk.nextStep + 300)) {
+                    int dx = (walk.ax > a.mx) - (walk.ax < a.mx), dy = (walk.ay > a.my) - (walk.ay < a.my);
+                    uint16_t k = dy < 0 ? (dx < 0 ? keys::Home : dx > 0 ? keys::PageUp : keys::Up)
+                               : dy > 0 ? (dx < 0 ? keys::End : dx > 0 ? keys::PageDown : keys::Down)
+                                        : (dx < 0 ? keys::Left : keys::Right);
+                    host::PushKey(k);
+                    walk.seenAtPush = cur;
+                    walk.steps++;
+                    walk.nextStep = now + 60;
+                }
+            }
+        } else if (walk.kind) {
+            bool active = walk.kind == 1 ? cx.list.active : (cx.roster.shown && !cx.list.active);
+            int cur = walk.kind == 1 ? cx.list.hl : cx.roster.selected;
+            if (!active || walk.steps > 40) walk.kind = 0;
+            else if (cur == walk.target) {
+                if (walk.kind == 1) host::PushKey(ListActionKey(cx.items));
+                walk.kind = 0;
+            } else if (now >= walk.nextStep && (cur != walk.seenAtPush || now >= walk.nextStep + 300)) {
+                host::PushKey(cur > walk.target ? keys::Home : keys::End);
+                walk.seenAtPush = cur;
+                walk.steps++;
+                walk.nextStep = now + 60;
+            }
+        }
 
-        std::vector<Button> buttons = keyboardOpen ? KeyboardButtons() : StripButtons();
-        std::vector<HotLine> hot = list.active ? std::vector<HotLine>() : FindHotLines(items);
-
-        // A tapped list entry: one Home/End per step until the highlight
-        // reaches it (headings are skipped by the game), then the action key.
-        if (pendingRow >= 0) {
-            if (!list.active || pendingSteps > 40) pendingRow = -1;
-            else if (list.hl == pendingRow) {
-                host::PushKey(ListActionKey(items));
-                pendingRow = -1;
-            } else if (now >= nextStep && (list.hl != hlAtPush || now >= nextStep + 300)) {
-                // wait for the game to show the previous step before the next
-                host::PushKey(list.hl > pendingRow ? keys::Home : keys::End);
-                hlAtPush = list.hl;
-                pendingSteps++;
-                nextStep = now + 60;
+        // ---- touch ----
+        std::vector<Button> buttons;
+        if (keyboardOpen) buttons = KeyboardButtons(cx.entry == 2);
+        else if (numberPad) buttons = NumberPadButtons(cx.entryMaxValue);
+        else {
+            buttons = StripButtons();
+            if (swapped) {
+                auto choices = ChoiceButtons(cx);
+                buttons.insert(buttons.end(), choices.begin(), choices.end());
             }
         }
 
         if (down & KEY_TOUCH) {
             touchPosition t;
             hidTouchRead(&t);
-            uint16_t hit = 0;
-            bool onButton = false;
-            for (auto& b : buttons)
-                if (t.px >= b.x - 1 && t.px < b.x + b.w + 1 && t.py >= b.y - 2 && t.py < b.y + b.h + 2) {
-                    hit = b.key;
-                    onButton = true;
-                    break;
-                }
-            if (!onButton && !keyboardOpen) {
-                int r = t.py / 8;
-                if (list.active && r >= list.row0 && r < list.row0 + list.rows &&
-                    t.px >= list.col0 * 8 - 8 && t.px < (list.col1 + 1) * 8 + 8) {
-                    // Tap a list entry: walk the highlight there, then pick it.
-                    int target = r - list.row0;
-                    if (target == list.hl) hit = ListActionKey(items);
-                    else {
-                        pendingRow = target;
-                        pendingSteps = 0;
-                        hlAtPush = -1;
-                        nextStep = now;
-                    }
+            const Button* b = ButtonAt(buttons, t.px, t.py);
+            uint16_t k = 0;
+            if (b) {
+                flashKey = b->key;
+                flashRow = b->listRow;
+                flashMember = b->member;
+                flashUntil = now + 150;
+                if (b->listRow >= 0) {
+                    if (b->listRow == cx.list.hl) k = ListActionKey(cx.items);
+                    else StartWalk(1, b->listRow, now);
+                } else if (b->member >= 0) {
+                    if (b->member != cx.roster.selected) StartWalk(2, b->member, now);
+                } else if (b->key == kToggleKeyboard) {
+                    keyboardOpen = !keyboardOpen;
+                    keyboardAuto = false;
+                } else if (b->key == kKbPage) {
+                    keyboardPage ^= 1;
+                } else if (b->key == kSwap) {
+                    swapped = !swapped;
+                } else if (b->key == kRandomName) {
+                    for (int i = 0; i < 16; i++) host::PushKey(keys::Backspace);
+                    const char* n = kNames[std::rand() % (sizeof kNames / sizeof kNames[0])];
+                    for (const char* c = n; *c; c++) host::PushKey(keys::Letter(*c));
+                } else if (b->key == kNumAll) {
+                    for (int i = 0; i < 8; i++) host::PushKey(keys::Backspace);
+                    for (int i = 0; i < 6; i++) host::PushKey((uint16_t)'9');  // the game caps it at the maximum
+                } else if (b->key == kNumClear) {
+                    for (int i = 0; i < 8; i++) host::PushKey(keys::Backspace);
                 } else {
-                    hit = MenuWordAt(t.px, t.py, items);
-                    if (!hit) hit = HotLineAt(t.px, t.py, hot);
+                    k = b->key;
                 }
+            } else if (!overlay && !swapped && t.py < 200) {
+                k = GameTap(t.px, t.py, cx, now);
+                flashKey = 0;
+                flashUntil = now + 150;
             }
-            if (onButton || hit) press(hit, now);
+            if (k) host::PushKey(k);
         }
 
+        // ---- draw ----
         u16 w, h;
         Surface top{gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &w, &h), 400};
         Surface bottom{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &w, &h), 320};
 
-        if (keyboardOpen) {
-            DrawKeyboardTop(top);
+        if (overlay) {
+            DrawGameOnTop(top, keyboardOpen ? "Keyboard - HIDE to return" : "How much? - OK when done");
+            Fill(bottom, 0, 0, 320, 240, kDash);
+            if (numberPad) {
+                std::string cap = cx.entryMaxValue > 0 ? "Enter an amount (max " + std::to_string(cx.entryMaxValue) + ")"
+                                                       : "Enter a number";
+                Text(bottom, (320 - TextWidth(cap)) / 2, 10, cap, kCyan);
+            }
+            DrawButtons(bottom, buttons, now);
+        } else if (swapped) {
+            DrawGameOnTop(top, "SELECT or SWAP: game back on the touch screen");
             Fill(bottom, 0, 0, 320, 240, kDash);
             DrawButtons(bottom, buttons, now);
         } else {
-            DrawDashboard(top, prompt, items, hot, list);
+            DrawDashboard(top, cx);
             BlitGame(bottom, 0, 0);
             Fill(bottom, 0, 200, 320, 40, kDash);
             DrawButtons(bottom, buttons, now);

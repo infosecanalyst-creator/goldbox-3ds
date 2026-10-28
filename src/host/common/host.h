@@ -29,4 +29,9 @@ void RequestQuit();
 // thread (e.g. inside platform::PresentFrame). Returns false if not loaded.
 bool CopyFont(uint8_t out[64][8]);
 
+// The game's current state (coab GameState: 0 start menu, 1 shop, 2 camping,
+// 3 wilderness map, 4 dungeon/town 3D view, 5 combat, 6 after combat, 7 end).
+// Safe to poll from any thread (a plain read of one int).
+int GameStateNow();
+
 }  // namespace host

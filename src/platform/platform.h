@@ -52,6 +52,23 @@ void MenuHide();
 void ListShow(int firstRow, int firstCol, int lastCol, int rows, int highlightRow);
 void ListHide();
 
+// The party list (name, AC, HP rows) was drawn: rows firstRow.., one per
+// member; `selected` is the selected member's index (-1: none). In coab
+// Home / End select the previous / next member wherever the list is shown.
+void RosterShow(int firstRow, int firstCol, int lastCol, int count, int selected);
+
+// Text / number entry started or finished (display-only hint so a touch host
+// can open a keyboard or number pad). kind: 1 = text, 2 = character name,
+// 3 = number (maxValue > 0: the largest amount accepted, 0: no fixed max).
+void EntryBegin(int kind, int maxValue);
+void EntryEnd();
+
+// Combat aiming. manual = 0: the "Aim:" menu, cursor on the current target;
+// manual = 1: free cursor ("Use Cursor keys"). Map squares; the combat view
+// shows squares topX..topX+6 / topY..topY+6, 24 pixels each, from (0,0).
+void AimShow(int manual, int mapX, int mapY, int topX, int topY);
+void AimHide();
+
 // Every character cell the game draws (text row 0..24, column 0..39, EGA
 // colours), so a host can find tappable text such as hotkey menus.
 void TextDrawn(int row, int col, char ch, int fg, int bg);

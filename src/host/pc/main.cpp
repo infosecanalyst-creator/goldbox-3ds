@@ -111,6 +111,11 @@ void MenuShow(const std::string&, const std::vector<MenuItem>&, bool) {}
 void MenuHide() {}
 void ListShow(int, int, int, int, int) {}
 void ListHide() {}
+void AimShow(int, int, int, int, int) {}
+void AimHide() {}
+void EntryBegin(int, int) {}
+void EntryEnd() {}
+void RosterShow(int, int, int, int, int) {}
 void TextDrawn(int, int, char, int, int) {}
 
 void EngineStopped() { engineDone = true; }
