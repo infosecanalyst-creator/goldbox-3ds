@@ -254,6 +254,11 @@ struct Button {
     bool selected = false;
 };
 
+// Hotkey menus have no highlight of their own; the host keeps one (D-pad
+// moves it, A picks it).
+int hotFocus = 0;
+constexpr uint16_t kFocusPrev = 0xFFF0, kFocusNext = 0xFFF1;
+
 bool keyboardOpen = false;
 bool keyboardAuto = false;  // opened by an entry hint (closes with it)
 int keyboardPage = 0;       // 0 = letters, 1 = digits/symbols
@@ -543,7 +548,7 @@ uint16_t GameTap(int px, int py, const Context& cx, u64 now) {
         return 0;
     }
     // 3D view (88x88 at 16,16): forward / turn left / turn right / turn round.
-    if (cx.state == kStateDungeon && cx.acceptsDirections && !cx.items.empty() && px >= 16 && px < 104 && py >= 16 &&
+    if (cx.state == kStateDungeon && cx.acceptsDirections && !cx.items.empty() && cx.items[0].label == "Area" && px >= 16 && px < 104 && py >= 16 &&
         py < 104) {
         if (px < 45) return keys::Left;
         if (px >= 75) return keys::Right;
@@ -575,7 +580,9 @@ std::vector<Button> ChoiceButtons(const Context& cx) {
         }
     } else if (!cx.hot.empty()) {
         for (size_t i = 0; i < cx.hot.size() && i < 6; i++) {
-            b.push_back({x0, y, w, 24, cx.hot[i].key, cx.hot[i].label});
+            Button bt{x0, y, w, 24, cx.hot[i].key, cx.hot[i].label};
+            bt.selected = (int)i == hotFocus;
+            b.push_back(bt);
             y += 27;
         }
     }
@@ -632,7 +639,7 @@ void DrawDashboard(const Surface& top, const Context& cx) {
         for (size_t i = 0; i < cx.hot.size() && i < 7; i++) {
             std::string t = cx.hot[i].label;
             if (t.size() > 22) t.resize(22);
-            Text(top, 24, y + (int)i * 18, t, kWhite, 2);
+            Text(top, 24, y + (int)i * 18, t, (int)i == hotFocus ? kGold : kWhite, 2);
         }
     } else if (!cx.words.empty()) {
         int shown = std::min<int>((int)cx.words.size(), 8);
@@ -846,6 +853,13 @@ int main(int argc, char** argv) {
     svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
     Thread engine = threadCreate(EngineEntry, nullptr, 1024 * 1024, prio + 1, -2, false);
 
+    struct {
+        std::string sig;
+        std::vector<HotLine> hot;
+        std::vector<platform::MenuItem> words;
+        bool rosterVisible = false;
+        u64 at = 0;
+    } cache;
     u64 nextRepeat = 0;
     uint16_t heldKey = 0;
     bool dirSent = false;
@@ -894,13 +908,36 @@ int main(int argc, char** argv) {
             cx.words = VisibleWords(cx.items);
             cx.hot = cx.list.active ? std::vector<HotLine>() : FindHotLines(cx.items);
             cx.rosterVisible = RosterVisible(cx.roster);
+            // While the game redraws, text can be missing for a frame or two;
+            // keep the last choices for the same menu so buttons don't flicker.
+            std::string sig = cx.prompt + "|";
+            for (auto& it : cx.items) sig += it.key;
+            if (sig == cache.sig && now < cache.at + 500) {
+                if (cx.hot.empty() && !cx.list.active) cx.hot = cache.hot;
+                if (cx.words.empty()) cx.words = cache.words;
+                if (!cx.rosterVisible) cx.rosterVisible = cache.rosterVisible;
+            }
+            if (sig != cache.sig) hotFocus = 0;
+            if (sig != cache.sig || !cx.hot.empty() || !cx.words.empty() || cx.rosterVisible) {
+                cache.sig = sig;
+                cache.hot = cx.hot;
+                cache.words = cx.words;
+                cache.rosterVisible = cx.rosterVisible;
+                cache.at = now;
+            }
+            if (hotFocus >= (int)cx.hot.size()) hotFocus = 0;
         }
+        bool hotMenu = !overlay && !cx.hot.empty() && !cx.list.active;
+        // The 3D view's own menu ("Area Cast View Encamp Search Look"): arrows walk.
+        bool explore3d = false;
+        if (cx.state == kStateDungeon)
+            for (auto& it : cx.items) explore3d |= it.label == "Area";
 
         // ---- buttons ----
         if ((held & KEY_START) && (held & KEY_SELECT)) quit = true;
         if ((down & KEY_SELECT) && !(held & KEY_START)) swapped = !swapped;
 
-        if (down & KEY_A) host::PushKey(keys::Enter);
+        if (down & KEY_A) host::PushKey(hotMenu ? cx.hot[hotFocus].key : keys::Enter);
         if ((down & KEY_START) && !(held & KEY_SELECT)) host::PushKey(keys::Enter);
         if (down & KEY_B) host::PushKey(keys::Escape);
         if (down & KEY_Y) host::PushKey(keys::Space);
@@ -926,6 +963,9 @@ int main(int argc, char** argv) {
         uint16_t dirKey = 0;
         if (overlay) {
             dirKey = 0;
+        } else if (hotMenu) {
+            if (up || lf) dirKey = kFocusPrev;
+            else if (dn || rt) dirKey = kFocusNext;
         } else if (cx.list.active) {
             // coab lists move their highlight with Home / End.
             if (up) dirKey = keys::Home;
@@ -935,6 +975,14 @@ int main(int argc, char** argv) {
         } else if (menuMode) {
             if (up || lf) dirKey = keys::Comma;
             else if (dn || rt) dirKey = keys::Period;
+        } else if (!cx.items.empty() && !combat && cx.state != kStateWilderness && !explore3d) {
+            // Menus that take control keys only to change party member (camp,
+            // shop, start menu ...): up/down = previous/next member (Home/End),
+            // left/right = step the menu highlight.
+            if (up) dirKey = keys::Home;
+            else if (dn) dirKey = keys::End;
+            else if (lf) dirKey = keys::Comma;
+            else if (rt) dirKey = keys::Period;
         } else if (combat) {
             if (up && lf) dirKey = keys::Home;
             else if (up && rt) dirKey = keys::PageUp;
@@ -950,6 +998,12 @@ int main(int argc, char** argv) {
             else if (lf) dirKey = keys::Left;
             else if (rt) dirKey = keys::Right;
         }
+        auto sendDir = [&](uint16_t k) {
+            int n = (int)cx.hot.size();
+            if (k == kFocusPrev) hotFocus = n ? (hotFocus + n - 1) % n : 0;
+            else if (k == kFocusNext) hotFocus = n ? (hotFocus + 1) % n : 0;
+            else host::PushKey(k);
+        };
         // In combat a step can't be taken back, so give a diagonal ~80 ms to
         // form (both directions pressed) before the first move is sent.
         if (dirKey != heldKey) {
@@ -959,17 +1013,17 @@ int main(int argc, char** argv) {
                     dirSent = false;
                     dirSince = now;
                 } else {
-                    host::PushKey(dirKey);
+                    sendDir(dirKey);
                     dirSent = true;
                     nextRepeat = now + 350;
                 }
             }
         } else if (dirKey && !dirSent && now >= dirSince + 80) {
-            host::PushKey(dirKey);
+            sendDir(dirKey);
             dirSent = true;
             nextRepeat = now + 350;
         } else if (dirKey && dirSent && now >= nextRepeat) {
-            host::PushKey(dirKey);
+            sendDir(dirKey);
             nextRepeat = now + 120;
         }
 
@@ -1084,6 +1138,10 @@ int main(int argc, char** argv) {
         } else {
             DrawDashboard(top, cx);
             BlitGame(bottom, 0, 0);
+            if (hotMenu) {  // the host's highlight on the hotkey line
+                const HotLine& h = cx.hot[hotFocus];
+                Frame(bottom, h.c0 * 8 - 3, h.row * 8 - 2, (h.c1 - h.c0 + 1) * 8 + 6, 12, kGold);
+            }
             Fill(bottom, 0, 200, 320, 40, kDash);
             DrawButtons(bottom, buttons, now);
         }
