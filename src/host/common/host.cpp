@@ -36,6 +36,7 @@ static void ApplyDefaultSettings() {
     engine::seg044::SetSound(true);
     engine::seg044::SetPicture(true);
     engine::seg044::SetAnimation(true);
+    gbl::portEnhancements = true;
 }
 
 void RunEngine(const Options& opt) {

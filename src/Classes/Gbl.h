@@ -231,6 +231,10 @@ struct gbl {
     inline static byte byte_1D5B5 = 0;
     inline static byte bigpic_block_id = 0; /* byte_1D5BA */
     inline static int menuSelectedWord = 0; // byte_1D5BE
+    // goldbox-3ds addition: port-only conveniences (clear font, title menu
+    // defaults to Play). Set by every host for normal play; stays false in the
+    // coab differential tests so those still match byte for byte.
+    inline static bool portEnhancements = false;
     inline static bool displayInput_specialKeyPressed = false; // byte_1D5BF displayInput
     inline static Point targetPos; // byte_1D883 & byte_1D884
     inline static bool spell_from_item = false; // byte_1D88D

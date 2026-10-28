@@ -8,7 +8,7 @@
 //   bottom screen and the game moves to the top screen so you can see what you
 //   are typing.
 // Controls: D-pad / Circle Pad = arrows (or step the menu highlight in plain
-//           menus), A = Enter, B = Esc, X = Yes, Y = Space,
+//           menus), A/START = Enter, B = Esc, X = Yes, Y = Space,
 //           L/R/ZL/ZR = diagonal moves (Home/PgUp/End/PgDn),
 //           SELECT = keyboard, START+SELECT = quit.
 //
@@ -31,6 +31,7 @@
 #include "host/common/host.h"
 #include "platform/keys.h"
 #include "platform/platform.h"
+#include "platform/readable_font.h"
 
 namespace {
 
@@ -40,8 +41,6 @@ namespace {
 LightLock frameLock;
 int egaFrame[320 * 200];
 uint8_t framePal[16 * 3];
-uint8_t font[64][8];  // the game's own 8x8 font, copied on the engine thread
-bool fontReady = false;
 volatile bool engineDone = false;
 
 // ---------------------------------------------------------------------------
@@ -162,13 +161,13 @@ void Frame(const Surface& s, int x, int y, int w, int h, RGB c) {
     Fill(s, x + w - 1, y, 1, h, c);
 }
 
-// Text in the game's font (upper case only, like the game).
+// Text in the clear 8x8 font (platform/readable_font.h).
 void Text(const Surface& s, int x, int y, const std::string& str, RGB c, int scale = 1) {
-    if (!fontReady) return;
     for (char ch : str) {
-        int g = std::toupper((unsigned char)ch) % 64;
+        const uint8_t* g = ReadableGlyph((unsigned char)ch);
+        if (!g) g = ReadableGlyph('?');
         for (int r = 0; r < 8; r++) {
-            uint8_t bits = font[g][r];
+            uint8_t bits = g[r];
             for (int i = 0; i < 8; i++)
                 if (bits & (0x80 >> i)) {
                     if (scale == 1) Put(s, x + i, y + r, c);
@@ -287,7 +286,7 @@ uint16_t MenuWordAt(int px, int py, const std::vector<platform::MenuItem>& items
 // ---------------------------------------------------------------------------
 void DrawDashboard(const Surface& top, const std::string& prompt, const std::vector<platform::MenuItem>& items) {
     Fill(top, 0, 0, 400, 240, kDash);
-    Text(top, (400 - TextWidth("CURSE OF THE AZURE BONDS", 2)) / 2, 8, "CURSE OF THE AZURE BONDS", kGold, 2);
+    Text(top, (400 - TextWidth("Curse of the Azure Bonds", 2)) / 2, 8, "Curse of the Azure Bonds", kGold, 2);
     Fill(top, 16, 30, 368, 1, kBtnEdge);
 
     int y = 40;
@@ -298,7 +297,7 @@ void DrawDashboard(const Surface& top, const std::string& prompt, const std::vec
         y += 22;
     }
     if (items.empty()) {
-        Text(top, 16, y + 8, "TAP THE GAME OR USE THE BUTTONS", kGrey);
+        Text(top, 16, y + 8, "Tap the game or use the buttons", kGrey);
     } else {
         // Menu words in big type, two columns.
         int shown = std::min<int>((int)items.size(), 12);
@@ -312,16 +311,16 @@ void DrawDashboard(const Surface& top, const std::string& prompt, const std::vec
     }
 
     Fill(top, 16, 196, 368, 1, kBtnEdge);
-    Text(top, 16, 202, "TAP A WORD ON THE MENU LINE TO PICK IT", kGrey);
-    Text(top, 16, 214, "D-PAD MOVE/STEP  A ENTER  B ESC  X YES  Y SPACE", kGrey);
-    Text(top, 16, 226, "SELECT KEYBOARD   START+SELECT QUIT", kGrey);
-    if (!ndspOk) Text(top, 16, 186, "NO SOUND: RUN DSP1 ONCE TO DUMP DSPFIRM.CDC", kRed);
+    Text(top, 16, 202, "Tap a word on the menu line to pick it", kGrey);
+    Text(top, 16, 214, "D-pad move/step  A Enter  B Esc  X Yes", kGrey);
+    Text(top, 16, 226, "Y Space  SELECT keyboard  START+SELECT quit", kGrey);
+    if (!ndspOk) Text(top, 16, 186, "No sound: run DSP1 once (dspfirm.cdc)", kRed);
 }
 
 void DrawKeyboardTop(const Surface& top) {
     Fill(top, 0, 0, 400, 240, kBlack);
     BlitGame(top, 40, 20);
-    Text(top, (400 - TextWidth("KEYBOARD - TAP DONE TO RETURN")) / 2, 226, "KEYBOARD - TAP DONE TO RETURN", kGrey);
+    Text(top, (400 - TextWidth("Keyboard - tap DONE to return")) / 2, 226, "Keyboard - tap DONE to return", kGrey);
 }
 
 // ---------------------------------------------------------------------------
@@ -342,15 +341,9 @@ void EngineEntry(void*) {
 namespace platform {
 
 void PresentFrame(const int* ega, const uint8_t* palette) {
-    uint8_t f[64][8];
-    bool ok = host::CopyFont(f);  // engine thread: safe to read engine state here
     LightLock_Lock(&frameLock);
     std::memcpy(egaFrame, ega, sizeof egaFrame);
     std::memcpy(framePal, palette, sizeof framePal);
-    if (ok) {
-        std::memcpy(font, f, sizeof font);
-        fontReady = true;
-    }
     LightLock_Unlock(&frameLock);
 }
 
@@ -473,6 +466,7 @@ int main(int argc, char** argv) {
         if (down & KEY_SELECT && !(held & KEY_START)) keyboardOpen = !keyboardOpen;
 
         if (down & KEY_A) host::PushKey(keys::Enter);
+        if ((down & KEY_START) && !(held & KEY_SELECT)) host::PushKey(keys::Enter);
         if (down & KEY_B) host::PushKey(keys::Escape);
         if (down & KEY_Y) host::PushKey(keys::Space);
         if (down & KEY_X) host::PushKey(keys::Letter('Y'));  // common "Yes" answer

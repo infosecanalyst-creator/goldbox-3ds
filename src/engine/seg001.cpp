@@ -110,6 +110,7 @@ void seg001::PROGRAM()
 
     gbl::displayInputSecondsToWait = 30;
     gbl::displayInputTimeoutValue = 'D';
+    if (gbl::portEnhancements) gbl::menuSelectedWord = 0;  // goldbox-3ds: A/Enter = Play, not Demo
 
     char inputKey = ovr027::displayInput(false, 0, gbl::defaultMenuColors, "Play Demo", "Curse of the Azure Bonds v1.3 ");
 
@@ -155,6 +156,7 @@ void seg001::PROGRAM()
 
             gbl::displayInputSecondsToWait = 10;
             gbl::displayInputTimeoutValue = 'D';
+            if (gbl::portEnhancements) gbl::menuSelectedWord = 0;  // goldbox-3ds: A/Enter = Play
 
             inputKey = ovr027::displayInput(false, 0, gbl::defaultMenuColors, "Play Demo", "Curse of the Azure Bonds v1.3 ");
 

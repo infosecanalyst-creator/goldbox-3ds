@@ -1,6 +1,7 @@
 // engine/seg041.cpp - translation of coab engine/seg041.cs.
 // Original C#: coab (c) Simeon Pilgrim, BSD-3. Translation: goldbox-3ds contributors.
 #include "engine/engine.h"
+#include "platform/readable_font.h"
 
 #include <ctime>
 
@@ -70,8 +71,10 @@ void seg041::display_char01(char ch, int repeatCount, int bgColor, int fgColor, 
         // PORT-NOTE: C# char is unsigned 16-bit; cast through unsigned char so chars >= 0x80 index like C#.
         char index = (char)((unsigned char)Char::ToUpper(ch) % 0x40);
 
+        // goldbox-3ds: draw printable text in the clear font, keeping its case.
+        const uint8_t* clear = gbl::portEnhancements ? ReadableGlyph((unsigned char)ch) : nullptr;
         for (int i = 0; i < 8; i++) {
-            gbl::monoCharData[i] = gbl::dax_8x8d1_201(index, i);
+            gbl::monoCharData[i] = clear ? clear[i] : gbl::dax_8x8d1_201(index, i);
         }
 
         for (int i = 0; i < repeatCount; i++) {
