@@ -81,6 +81,9 @@ void Sleep(int ms) {
 }
 void MenuShow(const std::string&, const std::vector<MenuItem>&, bool) {}
 void MenuHide() {}
+void ListShow(int, int, int, int, int) {}
+void ListHide() {}
+void TextDrawn(int, int, char, int, int) {}
 
 void EngineStopped() { engineDone = true; }
 }  // namespace platform

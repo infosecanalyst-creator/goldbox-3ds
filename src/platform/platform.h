@@ -45,6 +45,17 @@ struct MenuItem {
 void MenuShow(const std::string& prompt, const std::vector<MenuItem>& items, bool acceptsDirections);
 void MenuHide();
 
+// Scrolling lists (race, class, items, spells ...): published while the list
+// waits for input so a touch host can map a tap to a row. Rows are text rows
+// (8 pixels); `highlightRow` is the highlighted entry, counted from firstRow.
+// In coab such lists move their highlight with Home / End (keypad 7 / 1).
+void ListShow(int firstRow, int firstCol, int lastCol, int rows, int highlightRow);
+void ListHide();
+
+// Every character cell the game draws (text row 0..24, column 0..39, EGA
+// colours), so a host can find tappable text such as hotkey menus.
+void TextDrawn(int row, int col, char ch, int fg, int bg);
+
 // Called when the engine thread finishes (coab's EngineStoppedCallback).
 void EngineStopped();
 

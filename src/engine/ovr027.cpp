@@ -550,6 +550,10 @@ char ovr027::sl_select_item(MenuItem& result_ptr, int& index_ptr,
     }
 
     gbl::menuSelectedWord = 1;
+    // goldbox-3ds: highlight the list's own action ("Select", "Use" ...) so
+    // A/Enter picks the entry instead of Exit.
+    if (gbl::portEnhancements && inputString.Length() > 0) gbl::menuSelectedWord = 0;
+    struct ListHideOnExit { ~ListHideOnExit() { platform::ListHide(); } } listHideOnExit;
 
     int listDisplayWidth = (endX - startX) + 1;
     int listDisplayHeight = (short)((endY - startY) + 1);
@@ -610,6 +614,10 @@ char ovr027::sl_select_item(MenuItem& result_ptr, int& index_ptr,
         {
             displayString += " Exit";
         }
+
+        // goldbox-3ds: publish the visible rows to the host (display-only).
+        platform::ListShow(startY, startX, endX,
+            Math::Min(listDisplayHeight, listCount - gbl::menuScreenIndex), index_ptr - gbl::menuScreenIndex);
 
         bool speical_key;
         char input_key = displayInput(speical_key, false, 1, colors, displayString, extraTextString);

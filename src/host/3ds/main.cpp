@@ -52,6 +52,20 @@ std::vector<platform::MenuItem> menuItems;
 volatile bool menuAcceptsDirections = true;
 volatile bool menuVisible = false;
 
+// Scrolling list currently waiting for input (guarded by menuLock).
+struct ListState {
+    bool active = false;
+    int row0 = 0, col0 = 0, col1 = 0, rows = 0, hl = 0;
+};
+ListState listState;
+
+// What character the game last drew in each text cell (guarded by frameLock).
+struct Cell {
+    char ch = 0;
+    uint8_t fg = 0, bg = 0;
+};
+Cell textMap[25][40];
+
 // ---------------------------------------------------------------------------
 // Sound
 // ---------------------------------------------------------------------------
@@ -281,10 +295,101 @@ uint16_t MenuWordAt(int px, int py, const std::vector<platform::MenuItem>& items
     return keys::Letter((char)k);
 }
 
+// Is the character the game drew at (row, col) still on screen? (Pictures
+// can be drawn over old text.) Compares the frame's pixels with the glyph.
+// Call with frameLock held.
+bool CellShows(int r, int c) {
+    const Cell& cell = textMap[r][c];
+    const uint8_t* g = ReadableGlyph((unsigned char)cell.ch);
+    if (!g || cell.fg == cell.bg) return false;
+    for (int y = 0; y < 8; y++)
+        for (int x = 0; x < 8; x++) {
+            int want = (g[y] & (0x80 >> x)) ? cell.fg : cell.bg;
+            if (egaFrame[(r * 8 + y) * 320 + c * 8 + x] != want) return false;
+        }
+    return true;
+}
+
+// Hotkey menus such as "Create New Character / Add Character ...": the game
+// draws each line with its first letter in a brighter colour and reads the
+// letter as a key. Find those lines for the current menu's keys.
+struct HotLine {
+    int row, c0, c1;
+    uint16_t key;
+    std::string label;
+};
+
+std::vector<HotLine> FindHotLines(const std::vector<platform::MenuItem>& items) {
+    std::vector<HotLine> out;
+    if (items.empty()) return out;
+    for (auto& it : items)
+        if (it.label.size() != 1) return out;  // only menus whose keys are bare letters
+    std::string keyset;
+    for (auto& it : items) keyset += (char)std::toupper((unsigned char)it.key);
+    LightLock_Lock(&frameLock);
+    for (int r = 0; r < 24; r++)
+        for (int c = 0; c + 1 < 40; c++) {
+            if (!CellShows(r, c)) continue;
+            char k = (char)std::toupper((unsigned char)textMap[r][c].ch);
+            if (!std::isalpha((unsigned char)k) || keyset.find(k) == std::string::npos) continue;
+            if (c > 0 && CellShows(r, c - 1) && textMap[r][c - 1].ch != ' ') continue;
+            if (!CellShows(r, c + 1) || textMap[r][c + 1].fg == textMap[r][c].fg) continue;
+            bool dup = false;
+            for (auto& h : out) dup |= h.key == (uint16_t)k;
+            if (dup) continue;
+            HotLine h{r, c, c, (uint16_t)k, std::string(1, textMap[r][c].ch)};
+            for (int x = c + 1; x < 40 && CellShows(r, x); x++) {
+                if (textMap[r][x].ch == ' ' && (x + 1 >= 40 || !CellShows(r, x + 1) || textMap[r][x + 1].ch == ' ')) break;
+                h.label += textMap[r][x].ch;
+                h.c1 = x;
+            }
+            if (h.label.size() >= 3) out.push_back(h);
+        }
+    LightLock_Unlock(&frameLock);
+    return out;
+}
+
+uint16_t HotLineAt(int px, int py, const std::vector<HotLine>& lines) {
+    int best = -1, bestDist = 1 << 30;
+    for (size_t i = 0; i < lines.size(); i++) {
+        int x0 = lines[i].c0 * 8 - 8, x1 = (lines[i].c1 + 1) * 8 + 8;
+        if (px < x0 || px >= x1) continue;
+        int cy = lines[i].row * 8 + 4, d = py > cy ? py - cy : cy - py;
+        if (d < bestDist) {
+            bestDist = d;
+            best = (int)i;
+        }
+    }
+    return (best >= 0 && bestDist <= 8) ? lines[best].key : 0;
+}
+
+// Text of one row of the game screen, as the game last drew it.
+std::string RowText(int r, int c0, int c1) {
+    std::string t;
+    LightLock_Lock(&frameLock);
+    for (int c = std::max(0, c0); c <= std::min(39, c1); c++) t += CellShows(r, c) ? textMap[r][c].ch : ' ';
+    LightLock_Unlock(&frameLock);
+    while (!t.empty() && t.back() == ' ') t.pop_back();
+    size_t f = t.find_first_not_of(' ');
+    return f == std::string::npos ? std::string() : t.substr(f);
+}
+
+// The list's own action word ("Select", "Use" ...): the first menu word that
+// is not Next / Prev / Exit.
+uint16_t ListActionKey(const std::vector<platform::MenuItem>& items) {
+    for (auto& it : items) {
+        std::string l = it.label;
+        for (auto& ch : l) ch = (char)std::tolower((unsigned char)ch);
+        if (l != "next" && l != "prev" && l != "exit") return keys::Letter(it.key);
+    }
+    return keys::Enter;
+}
+
 // ---------------------------------------------------------------------------
 // Screens
 // ---------------------------------------------------------------------------
-void DrawDashboard(const Surface& top, const std::string& prompt, const std::vector<platform::MenuItem>& items) {
+void DrawDashboard(const Surface& top, const std::string& prompt, const std::vector<platform::MenuItem>& items,
+                   const std::vector<HotLine>& hot, const ListState& list) {
     Fill(top, 0, 0, 400, 240, kDash);
     Text(top, (400 - TextWidth("Curse of the Azure Bonds", 2)) / 2, 8, "Curse of the Azure Bonds", kGold, 2);
     Fill(top, 16, 30, 368, 1, kBtnEdge);
@@ -296,7 +401,21 @@ void DrawDashboard(const Surface& top, const std::string& prompt, const std::vec
         Text(top, 16, y, p.substr(0, 23), kCyan, 2);
         y += 22;
     }
-    if (items.empty()) {
+    if (list.active) {
+        // The list itself, large, with the highlighted entry in gold.
+        int first = std::max(0, std::min(list.hl - 3, list.rows - 7));
+        for (int i = first; i < list.rows && i < first + 7; i++) {
+            std::string t = RowText(list.row0 + i, list.col0, list.col1);
+            if (t.size() > 22) t.resize(22);
+            Text(top, 24, y + (i - first) * 18, t, i == list.hl ? kGold : kWhite, 2);
+        }
+    } else if (!hot.empty()) {
+        for (size_t i = 0; i < hot.size() && i < 7; i++) {
+            std::string t = hot[i].label;
+            if (t.size() > 22) t.resize(22);
+            Text(top, 24, y + (int)i * 18, t, kWhite, 2);
+        }
+    } else if (items.empty()) {
         Text(top, 16, y + 8, "Tap the game or use the buttons", kGrey);
     } else {
         // Menu words in big type, two columns.
@@ -311,8 +430,8 @@ void DrawDashboard(const Surface& top, const std::string& prompt, const std::vec
     }
 
     Fill(top, 16, 196, 368, 1, kBtnEdge);
-    Text(top, 16, 202, "Tap a word on the menu line to pick it", kGrey);
-    Text(top, 16, 214, "D-pad move/step  A Enter  B Esc  X Yes", kGrey);
+    Text(top, 16, 202, "Tap a choice on the game screen to pick it", kGrey);
+    Text(top, 16, 214, "D-pad move/choose  A Enter  B Esc  X Yes", kGrey);
     Text(top, 16, 226, "Y Space  SELECT keyboard  START+SELECT quit", kGrey);
     if (!ndspOk) Text(top, 16, 186, "No sound: run DSP1 once (dspfirm.cdc)", kRed);
 }
@@ -376,6 +495,25 @@ void MenuShow(const std::string& prompt, const std::vector<MenuItem>& items, boo
     menuAcceptsDirections = acceptsDirections;
     menuVisible = !items.empty();
     LightLock_Unlock(&menuLock);
+}
+
+void ListShow(int firstRow, int firstCol, int lastCol, int rows, int highlightRow) {
+    LightLock_Lock(&menuLock);
+    listState = {true, firstRow, firstCol, lastCol, rows, highlightRow};
+    LightLock_Unlock(&menuLock);
+}
+
+void ListHide() {
+    LightLock_Lock(&menuLock);
+    listState.active = false;
+    LightLock_Unlock(&menuLock);
+}
+
+void TextDrawn(int row, int col, char ch, int fg, int bg) {
+    if ((unsigned)row >= 25u || (unsigned)col >= 40u) return;
+    LightLock_Lock(&frameLock);
+    textMap[row][col] = {ch, (uint8_t)fg, (uint8_t)bg};
+    LightLock_Unlock(&frameLock);
 }
 
 void MenuHide() {
@@ -446,6 +584,8 @@ int main(int argc, char** argv) {
 
     u64 nextRepeat = 0;
     uint16_t heldKey = 0;
+    int pendingRow = -1, pendingSteps = 0, hlAtPush = -1;
+    u64 nextStep = 0;
     bool quit = false;
 
     auto press = [&](uint16_t k, u64 now) {
@@ -478,12 +618,18 @@ int main(int argc, char** argv) {
         // Directions with key repeat (D-pad, Circle Pad, C-stick).
         // In a plain menu (no movement accepted) coab moves the highlight with
         // ',' and '.', so the D-pad does that; A then picks the highlighted item.
+        // In a scrolling list coab moves the highlight with Home / End, so
+        // up / down send those and left / right step the menu words.
+        ListState list;
+        LightLock_Lock(&menuLock);
+        list = listState;
+        LightLock_Unlock(&menuLock);
         bool menuMode = menuVisible && !menuAcceptsDirections;
         uint16_t dirKey = 0;
-        if (held & (KEY_DUP | KEY_CPAD_UP)) dirKey = menuMode ? keys::Comma : keys::Up;
-        else if (held & (KEY_DDOWN | KEY_CPAD_DOWN)) dirKey = menuMode ? keys::Period : keys::Down;
-        else if (held & (KEY_DLEFT | KEY_CPAD_LEFT)) dirKey = menuMode ? keys::Comma : keys::Left;
-        else if (held & (KEY_DRIGHT | KEY_CPAD_RIGHT)) dirKey = menuMode ? keys::Period : keys::Right;
+        if (held & (KEY_DUP | KEY_CPAD_UP)) dirKey = list.active ? keys::Home : menuMode ? keys::Comma : keys::Up;
+        else if (held & (KEY_DDOWN | KEY_CPAD_DOWN)) dirKey = list.active ? keys::End : menuMode ? keys::Period : keys::Down;
+        else if (held & (KEY_DLEFT | KEY_CPAD_LEFT)) dirKey = (menuMode || list.active) ? keys::Comma : keys::Left;
+        else if (held & (KEY_DRIGHT | KEY_CPAD_RIGHT)) dirKey = (menuMode || list.active) ? keys::Period : keys::Right;
         if (dirKey != heldKey) {
             heldKey = dirKey;
             if (dirKey) {
@@ -503,6 +649,23 @@ int main(int argc, char** argv) {
         LightLock_Unlock(&menuLock);
 
         std::vector<Button> buttons = keyboardOpen ? KeyboardButtons() : StripButtons();
+        std::vector<HotLine> hot = list.active ? std::vector<HotLine>() : FindHotLines(items);
+
+        // A tapped list entry: one Home/End per step until the highlight
+        // reaches it (headings are skipped by the game), then the action key.
+        if (pendingRow >= 0) {
+            if (!list.active || pendingSteps > 40) pendingRow = -1;
+            else if (list.hl == pendingRow) {
+                host::PushKey(ListActionKey(items));
+                pendingRow = -1;
+            } else if (now >= nextStep && (list.hl != hlAtPush || now >= nextStep + 300)) {
+                // wait for the game to show the previous step before the next
+                host::PushKey(list.hl > pendingRow ? keys::Home : keys::End);
+                hlAtPush = list.hl;
+                pendingSteps++;
+                nextStep = now + 60;
+            }
+        }
 
         if (down & KEY_TOUCH) {
             touchPosition t;
@@ -515,7 +678,24 @@ int main(int argc, char** argv) {
                     onButton = true;
                     break;
                 }
-            if (!onButton && !keyboardOpen) hit = MenuWordAt(t.px, t.py, items);
+            if (!onButton && !keyboardOpen) {
+                int r = t.py / 8;
+                if (list.active && r >= list.row0 && r < list.row0 + list.rows &&
+                    t.px >= list.col0 * 8 - 8 && t.px < (list.col1 + 1) * 8 + 8) {
+                    // Tap a list entry: walk the highlight there, then pick it.
+                    int target = r - list.row0;
+                    if (target == list.hl) hit = ListActionKey(items);
+                    else {
+                        pendingRow = target;
+                        pendingSteps = 0;
+                        hlAtPush = -1;
+                        nextStep = now;
+                    }
+                } else {
+                    hit = MenuWordAt(t.px, t.py, items);
+                    if (!hit) hit = HotLineAt(t.px, t.py, hot);
+                }
+            }
             if (onButton || hit) press(hit, now);
         }
 
@@ -528,7 +708,7 @@ int main(int argc, char** argv) {
             Fill(bottom, 0, 0, 320, 240, kDash);
             DrawButtons(bottom, buttons, now);
         } else {
-            DrawDashboard(top, prompt, items);
+            DrawDashboard(top, prompt, items, hot, list);
             BlitGame(bottom, 0, 0);
             Fill(bottom, 0, 200, 320, 40, kDash);
             DrawButtons(bottom, buttons, now);

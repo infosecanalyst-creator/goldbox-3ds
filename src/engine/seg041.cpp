@@ -1,6 +1,7 @@
 // engine/seg041.cpp - translation of coab engine/seg041.cs.
 // Original C#: coab (c) Simeon Pilgrim, BSD-3. Translation: goldbox-3ds contributors.
 #include "engine/engine.h"
+#include "platform/platform.h"
 #include "platform/readable_font.h"
 
 #include <ctime>
@@ -79,6 +80,7 @@ void seg041::display_char01(char ch, int repeatCount, int bgColor, int fgColor, 
 
         for (int i = 0; i < repeatCount; i++) {
             Display::DisplayMono8x8(XCol + i, YCol, gbl::monoCharData, bgColor, fgColor);
+            platform::TextDrawn(YCol, XCol + i, ch, fgColor, bgColor);  // goldbox-3ds: display-only
         }
     }
 }
