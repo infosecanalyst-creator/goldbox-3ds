@@ -29,6 +29,7 @@ void Display::DisplayMono8x8(int xCol, int yCol, Array<byte> monoData8x8, int bg
 
         for (int i = 0; i < 8; i++) {
             ram(pY, pX + i) = (value & MonoBitMask[i]) != 0 ? fgColor : bgColor;
+            if ((unsigned)pY < 200u && (unsigned)(pX + i) < 320u) depthMap[pY][pX + i] = 0;  // text is at the screen
             SetVidPixel(pX + i, pY, ram(pY, pX + i));
         }
     }
@@ -94,6 +95,7 @@ byte Display::GetPixel(int x, int y) { return (byte)ram(y, x); }
 void Display::SetPixel3(int x, int y, int value) {
     if (value < 16) {
         ram(y, x) = value;
+        if ((unsigned)y < 200u && (unsigned)x < 320u) depthMap[y][x] = (uint8_t)depthLayer;
 
         SetVidPixel(x, y, ram(y, x));
     }
@@ -132,6 +134,7 @@ void Display::RawCopy(Array<byte> vram, int /*videoRamSize*/) {
             frame[y * 320 + x] = idx;
         }
     }
+    platform::PresentDepth(&depthMap[0][0]);
     platform::PresentFrame(frame, pal);
 }
 

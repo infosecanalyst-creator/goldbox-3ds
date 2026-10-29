@@ -330,6 +330,7 @@ void ovr031::Draw3dWorld(byte partyDir, int partyPosY, int partyPosX) /* sub_718
     }
     else
     {
+        Display::depthLayer = 4;  // goldbox-3ds: sky and floor furthest away
         Draw3dWorldBackground();
 
         int dir_left = (partyDir + 6) % 8;
@@ -346,14 +347,17 @@ void ovr031::Draw3dWorld(byte partyDir, int partyPosY, int partyPosX) /* sub_718
             switch (drawStep)
             {
                 case 2:
+                    Display::depthLayer = 3;
                     Draw3dWorldFar(partyDir, dir_left, dir_right, drawX, drawY);
                     break;
 
                 case 1:
+                    Display::depthLayer = 2;
                     Draw3dWorldMid(partyDir, dir_left, dir_right, drawX, drawY);
                     break;
 
                 case 0:
+                    Display::depthLayer = 1;
                     Draw3dWorldNear(partyDir, dir_left, dir_right, drawX, drawY);
                     break;
             }
@@ -365,6 +369,7 @@ void ovr031::Draw3dWorld(byte partyDir, int partyPosY, int partyPosX) /* sub_718
             drawStep -= 1;
 
         } while (drawStep >= 0);
+        Display::depthLayer = 0;
     }
 
     Display::UpdateStart();

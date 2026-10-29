@@ -49,6 +49,7 @@ namespace {
 LightLock frameLock;
 int egaFrame[320 * 200];
 uint8_t framePal[16 * 3];
+uint8_t depthBuf[320 * 200];  // depth layer per pixel (0 screen .. 4 far)
 volatile bool engineDone = false;
 
 // ---------------------------------------------------------------------------
@@ -920,7 +921,14 @@ void BlitGameShifted(const Surface& s, int ox, int oy, int shift) {
 
 // The game scaled 6/5 to 384x240 (fills the top screen's height, keeps the
 // shape), with the same recessed view window for 3D.
-void BlitGameScaled(const Surface& s, int ox, int shift) {
+// eye: -1 left, +1 right, 0 flat. strength: the 3D slider (0..1). Each pixel's
+// depth layer L (from the game's 3D view: 1 near walls .. 4 sky/floor) is
+// shown shifted by eye * L * maxShift source pixels, so the corridor recedes
+// into the screen; the nearest layer claiming a pixel wins.
+void BlitGameScaled(const Surface& s, int ox, int eye, float strength) {
+    int shiftL[5];
+    for (int L = 0; L < 5; L++) shiftL[L] = eye * (int)(strength * L * 1.0f + 0.5f);
+    bool stereo = eye != 0 && strength > 0.01f;
     LightLock_Lock(&frameLock);
     for (int x = 0; x < 384; x++) {
         u8* col = s.fb + (size_t)(x + ox) * 240 * 3;
@@ -928,9 +936,15 @@ void BlitGameScaled(const Surface& s, int ox, int shift) {
         for (int y = 0; y < 240; y++) {
             int sy = y * 5 / 6, sx = sx0;
             bool black = false;
-            if (shift && sx0 >= 16 && sx0 < 104 && sy >= 16 && sy < 104) {
-                sx = sx0 - shift;
-                black = sx < 16 || sx > 103;
+            if (stereo && sx0 >= 8 && sx0 < 112 && sy >= 8 && sy < 112) {
+                // inside the view window: find the nearest layer that lands here
+                int found = -1;
+                for (int L = 0; L < 5 && found < 0; L++) {
+                    int cx = sx0 - shiftL[L];
+                    if (cx >= 0 && cx < 320 && depthBuf[sy * 320 + cx] == L) found = cx;
+                }
+                if (found >= 0) sx = found;
+                else black = true;
             }
             static const uint8_t kZero[3] = {0, 0, 0};
             const uint8_t* c = black ? kZero : framePal + egaFrame[sy * 320 + sx] * 3;
@@ -960,14 +974,14 @@ void BlitGameScaled(const Surface& s, int ox, int shift) {
     LightLock_Unlock(&frameLock);
 }
 
-void DrawGameTop(const Surface& left, const Surface& right, int depth, const char* /*caption*/) {
+void DrawGameTop(const Surface& left, const Surface& right, float depth, const char* /*caption*/) {
     Fill(left, 0, 0, 8, 240, kBlack);
     Fill(left, 392, 0, 8, 240, kBlack);
-    BlitGameScaled(left, 8, -depth);
-    if (depth > 0) {
+    BlitGameScaled(left, 8, -1, depth);
+    if (depth > 0.01f) {
         Fill(right, 0, 0, 8, 240, kBlack);
         Fill(right, 392, 0, 8, 240, kBlack);
-        BlitGameScaled(right, 8, depth);
+        BlitGameScaled(right, 8, 1, depth);
     } else {
         std::memcpy(right.fb, left.fb, 400 * 240 * 3);
     }
@@ -997,6 +1011,12 @@ void EngineEntry(void*) {
 // platform.h implementation
 // ---------------------------------------------------------------------------
 namespace platform {
+
+void PresentDepth(const uint8_t* depth) {
+    LightLock_Lock(&frameLock);
+    std::memcpy(depthBuf, depth, sizeof depthBuf);
+    LightLock_Unlock(&frameLock);
+}
 
 void PresentFrame(const int* ega, const uint8_t* palette) {
     LightLock_Lock(&frameLock);
@@ -1544,7 +1564,7 @@ int main(int argc, char** argv) {
         Surface top{gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &w, &h), 400};
         Surface topR{gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, &w, &h), 400};
         Surface bottom{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &w, &h), 320};
-        int depth = (int)(osGet3DSliderState() * 5.0f + 0.5f);
+        float depth = osGet3DSliderState();
         bool topDone = false;
 
         if (overlay) {
@@ -1558,7 +1578,7 @@ int main(int argc, char** argv) {
             }
             DrawButtons(bottom, buttons, now);
         } else if (swapped) {
-            DrawGameTop(top, topR, (cx.state == kStateDungeon && explore3d) ? depth : 0, "SELECT: game on the touch screen");
+            DrawGameTop(top, topR, cx.state == kStateDungeon ? depth : 0.0f, "SELECT: game on the touch screen");
             topDone = true;
             Fill(bottom, 0, 0, 320, 240, kDash);
             if (ExplorePanelWanted(cx, cx.map)) {

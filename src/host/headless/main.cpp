@@ -83,6 +83,7 @@ void MenuShow(const std::string&, const std::vector<MenuItem>&, bool) {}
 void MenuHide() {}
 void ListShow(int, int, int, int, int) {}
 void ListHide() {}
+void PresentDepth(const uint8_t*) {}
 void PartyStatus(const std::vector<PartyMember>&) {}
 void MapView(int, int, int, int, int, const uint8_t*) {}
 void AimShow(int, int, int, int, int) {}

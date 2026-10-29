@@ -6,6 +6,11 @@ namespace engine {
 
 void ovr030::DrawMaybeOverlayed(DaxBlock dax_block, bool useOverlay, int rowY, int colX)// sub_7000A
 {
+    // goldbox-3ds: pictures in the view window sit just behind the frame.
+    struct DepthScope {
+        explicit DepthScope(int l) { Display::depthLayer = l; }
+        ~DepthScope() { Display::depthLayer = 0; }
+    } depthScope(rowY <= 3 && colX <= 3 ? 2 : 0);
     if (dax_block != nullptr)
     {
         if (gbl::area_ptr->picture_fade > 0 || useOverlay == true)
@@ -216,6 +221,8 @@ void ovr030::Show3DSprite(DaxArray arg_0, int sprite_index)
     if (arg_0->frames[sprite_index - 1]->picture != nullptr)
     {
         DaxBlock block = arg_0->frames[sprite_index - 1]->picture;
+        Display::depthLayer = 4 - sprite_index;  // goldbox-3ds: far (1) .. near (3)
+        struct DepthReset { ~DepthReset() { Display::depthLayer = 0; } } depthReset;
         seg040::OverlayBounded(arg_0->frames[sprite_index - 1]->picture, 1, 0, block->y_pos + 3 - 1, block->x_pos + 3 - 1);
         seg040::DrawOverlay();
     }

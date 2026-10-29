@@ -83,6 +83,12 @@ public:
 
     static void SetPixel3(int x, int y, int value);
 
+    // goldbox-3ds (display-only): a depth layer per pixel for stereoscopic 3D.
+    // 0 = screen (frame, text); 1 near walls ... 4 sky/floor. The 3D view
+    // sets depthLayer while it draws each distance; everything else is 0.
+    inline static int depthLayer = 0;
+    inline static uint8_t depthMap[200][320] = {};
+
     static void RawCopy(Array<byte> videoRam, int videoRamSize);
 };
 

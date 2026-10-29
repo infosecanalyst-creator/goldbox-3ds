@@ -19,6 +19,10 @@ namespace platform {
 // `palette` is 16 RGB triples (the current EGA palette).
 void PresentFrame(const int* ega, const uint8_t* palette);
 
+// Per-pixel depth layer for the coming frame (320x200, 0 = screen depth,
+// 1..4 = further into the screen). Display-only; hosts may ignore it.
+void PresentDepth(const uint8_t* depth);
+
 // Sound effects. `id` is coab's sample slot (1..12, see seg044); `name` the
 // resource name ("hit", "miss", ...). Load is called once at start-up.
 void LoadSound(int id, const char* name);
