@@ -26,6 +26,8 @@
 #include <3ds.h>
 
 #include <algorithm>
+#include <array>
+#include <map>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -224,6 +226,59 @@ struct RosterState {
     int row0 = 0, col0 = 0, col1 = 0, count = 0, selected = -1;
 };
 RosterState rosterState;
+std::vector<platform::PartyMember> partyMembers;
+
+// The map the game last drew in 3D (for the automap).
+struct MapState {
+    bool valid = false;
+    int area = 0, block = 0, x = 0, y = 0, dir = 0;
+    uint8_t cells[256] = {};
+};
+MapState mapState;
+
+// Explored squares per map (key = area * 256 + block), 256 bits each; saved
+// to the user folder so the automap remembers where you have been.
+std::map<int, std::array<uint8_t, 32>> explored;
+bool exploredDirty = false;
+const char* kAutomapFile = "sdmc:/3ds/goldbox/user/automap.bin";
+
+void LoadAutomap() {
+    FILE* f = std::fopen(kAutomapFile, "rb");
+    if (!f) return;
+    int32_t key;
+    std::array<uint8_t, 32> bits;
+    while (std::fread(&key, sizeof key, 1, f) == 1 && std::fread(bits.data(), 1, 32, f) == 32) explored[key] = bits;
+    std::fclose(f);
+}
+
+void SaveAutomap() {
+    FILE* f = std::fopen(kAutomapFile, "wb");
+    if (!f) return;
+    for (auto& e : explored) {
+        int32_t key = e.first;
+        std::fwrite(&key, sizeof key, 1, f);
+        std::fwrite(e.second.data(), 1, 32, f);
+    }
+    std::fclose(f);
+    exploredDirty = false;
+}
+
+void MarkExplored(int key, int x, int y) {
+    if ((unsigned)x >= 16u || (unsigned)y >= 16u) return;
+    auto& bits = explored[key];
+    uint8_t& b = bits[(y * 16 + x) >> 3];
+    uint8_t m = (uint8_t)(1 << ((y * 16 + x) & 7));
+    if (!(b & m)) {
+        b |= m;
+        exploredDirty = true;
+    }
+}
+
+bool IsExplored(int key, int x, int y) {
+    auto it = explored.find(key);
+    if (it == explored.end() || (unsigned)x >= 16u || (unsigned)y >= 16u) return false;
+    return it->second[(y * 16 + x) >> 3] & (1 << ((y * 16 + x) & 7));
+}
 struct AimState {
     bool active = false;
     int manual = 0, mx = 0, my = 0, tx = 0, ty = 0;
@@ -262,7 +317,8 @@ constexpr uint16_t kFocusPrev = 0xFFF0, kFocusNext = 0xFFF1;
 bool keyboardOpen = false;
 bool keyboardAuto = false;  // opened by an entry hint (closes with it)
 int keyboardPage = 0;       // 0 = letters, 1 = digits/symbols
-bool swapped = false;
+bool swapped = false;   // this frame: game on the top screen
+bool userFlip = false;  // SELECT / SWAP: flip the automatic choice
 uint16_t flashKey = 0;  // last pressed button, drawn highlighted briefly
 int flashRow = -1, flashMember = -1;
 u64 flashUntil = 0;
@@ -485,6 +541,8 @@ struct Context {
     std::vector<HotLine> hot;
     bool acceptsDirections = true;
     AimState aim;
+    std::vector<platform::PartyMember> party;
+    MapState map;
     int state = 0;
     int entry = 0, entryMaxValue = 0;
 };
@@ -624,8 +682,14 @@ void DrawDashboard(const Surface& top, const Context& cx) {
     std::string p = cx.prompt;
     while (!p.empty() && p.back() == ' ') p.pop_back();
     if (!p.empty()) {
-        Text(top, 16, y, p.substr(0, 23), kCyan, 2);
-        y += 20;
+        if (p.size() <= 23) {
+            Text(top, 16, y, p, kCyan, 2);
+            y += 20;
+        } else {  // long prompts in normal size, up to two lines
+            Text(top, 16, y, p.substr(0, 46), kCyan);
+            if (p.size() > 46) Text(top, 16, y + 10, p.substr(46, 46), kCyan);
+            y += p.size() > 46 ? 24 : 14;
+        }
     }
     if (cx.list.active) {
         // The list itself, large, with the highlighted entry in gold.
@@ -649,14 +713,21 @@ void DrawDashboard(const Surface& top, const Context& cx) {
             Text(top, 16 + (i % 2) * 188, y + (i / 2) * 18, label, kWhite, 2);
         }
         y += ((shown + 1) / 2) * 18 + 4;
-        // Party, when there is room.
-        if (cx.rosterVisible) {
-            for (int i = 0; i < cx.roster.count && y < 176; i++, y += 12)
-                Text(top, 24, y, (i == cx.roster.selected ? "> " : "  ") + MemberName(cx.roster, i),
-                     i == cx.roster.selected ? kGold : kGrey);
-        }
     } else {
         Text(top, 16, y + 8, "Tap the game to continue", kGrey);
+        y += 24;
+    }
+    // Party: name, HP, AC (from the game's own party data).
+    if (!cx.list.active) {
+        y = std::max(y + 6, 120);
+        for (auto& m : cx.party) {
+            if (y > 176) break;
+            char line[64];
+            std::snprintf(line, sizeof line, "%c %-15s HP %3d/%-3d AC %d", m.active ? '>' : ' ', m.name.substr(0, 15).c_str(),
+                          m.hp, m.hpMax, m.ac);
+            Text(top, 16, y, line, m.active ? kGold : kGrey);  // NOLINT
+            y += 11;
+        }
     }
 
     Fill(top, 16, 190, 368, 1, kBtnEdge);
@@ -670,6 +741,127 @@ void DrawGameOnTop(const Surface& top, const char* caption) {
     Fill(top, 0, 0, 400, 240, kBlack);
     BlitGame(top, 40, 20);
     Text(top, (400 - TextWidth(caption)) / 2, 226, caption, kGrey);
+}
+
+// ---------------------------------------------------------------------------
+// Automap (bottom screen while exploring with the game on top)
+// ---------------------------------------------------------------------------
+void DrawAutomap(const Surface& s, int ox, int oy, int cell, const MapState& m) {
+    const int size = cell * 16;
+    Fill(s, ox - 2, oy - 2, size + 4, size + 4, kBtnEdge);
+    Fill(s, ox, oy, size, size, RGB{4, 6, 20});
+    int key = m.area * 256 + m.block;
+    for (int y = 0; y < 16; y++)
+        for (int x = 0; x < 16; x++) {
+            if (!IsExplored(key, x, y)) continue;
+            int px = ox + x * cell, py = oy + y * cell;
+            Fill(s, px, py, cell, cell, RGB{40, 52, 96});
+            uint8_t c = m.cells[y * 16 + x];
+            RGB wall = kWhite, door = kGold;
+            if (c & 1) Fill(s, px, py, cell, 1, (c & 16) ? door : wall);
+            if (c & 4) Fill(s, px, py + cell - 1, cell, 1, (c & 64) ? door : wall);
+            if (c & 8) Fill(s, px, py, 1, cell, (c & 128) ? door : wall);
+            if (c & 2) Fill(s, px + cell - 1, py, 1, cell, (c & 32) ? door : wall);
+            // doors drawn thicker in the middle of the wall
+            int mid = cell / 2;
+            if (c & 16) Fill(s, px + mid - 2, py, 4, 2, door);
+            if (c & 64) Fill(s, px + mid - 2, py + cell - 2, 4, 2, door);
+            if (c & 128) Fill(s, px, py + mid - 2, 2, 4, door);
+            if (c & 32) Fill(s, px + cell - 2, py + mid - 2, 2, 4, door);
+        }
+    // The party: a gold arrow pointing the way you face.
+    int cx = ox + m.x * cell + cell / 2, cy = oy + m.y * cell + cell / 2;
+    for (int i = 0; i < cell / 2; i++) {
+        int half = i / 2;
+        switch (m.dir & 6) {
+            case 0: Fill(s, cx - half, cy - cell / 4 + i, half * 2 + 1, 1, kGold); break;           // north
+            case 4: Fill(s, cx - half, cy + cell / 4 - i, half * 2 + 1, 1, kGold); break;           // south
+            case 2: Fill(s, cx + cell / 4 - i, cy - half, 1, half * 2 + 1, kGold); break;           // east
+            default: Fill(s, cx - cell / 4 + i, cy - half, 1, half * 2 + 1, kGold); break;          // west
+        }
+    }
+}
+
+bool ExplorePanelWanted(const Context& cx, const MapState& m) {
+    return m.valid && cx.state == kStateDungeon && !cx.list.active && cx.hot.empty() && cx.entry == 0;
+}
+
+// Explore layout: automap on the left, the menu words as a column on the right.
+std::vector<Button> ExploreButtons(const Context& cx) {
+    std::vector<Button> b;
+    int x = 158, w = 158, y = 4, n = (int)cx.words.size();
+    int h = n > 6 ? 20 : 24, gap = n > 6 ? 2 : 3;
+    for (int i = 0; i < n && y + h <= 198; i++) {
+        b.push_back({x, y, w, h, keys::Letter(cx.words[i].key), cx.words[i].label});
+        y += h + gap;
+    }
+    if (b.empty() && (cx.items.empty() || MenuSaysContinue(cx.prompt, cx.items)))
+        b.push_back({x, 60, w, 60, keys::Enter, "CONTINUE"});
+    return b;
+}
+
+// ---------------------------------------------------------------------------
+// Combat panel (top screen while the game is on the touch screen in combat)
+// ---------------------------------------------------------------------------
+void DrawCombatPanel(const Surface& top, const std::vector<platform::PartyMember>& party) {
+    Fill(top, 0, 0, 400, 240, RGB{24, 6, 10});
+    Text(top, (400 - TextWidth("Combat", 2)) / 2, 6, "Combat", kRed, 2);
+    Fill(top, 16, 26, 368, 1, RGB{160, 60, 60});
+    int y = 34;
+    for (auto& m : party) {
+        if (y > 176) break;
+        bool down = m.hp <= 0;
+        RGB name = m.active ? kGold : down ? kGrey : kWhite;
+        std::string n = m.name.substr(0, 12);
+        if (m.active) Fill(top, 8, y - 3, 384, 22, RGB{70, 50, 10});
+        Text(top, 16, y, (m.active ? ">" : " ") + n, name, 2);
+        // HP bar
+        int bx = 236, bw = 100, frac = m.hpMax > 0 ? std::max(0, std::min(bw, m.hp * bw / m.hpMax)) : 0;
+        RGB bar = m.hp * 3 > m.hpMax * 2 ? RGB{60, 200, 80} : m.hp * 3 > m.hpMax ? RGB{230, 200, 60} : RGB{230, 70, 60};
+        Fill(top, bx, y + 2, bw, 10, RGB{50, 30, 30});
+        Fill(top, bx, y + 2, frac, 10, bar);
+        Text(top, bx + bw + 6, y + 3, std::to_string(m.hp), name);
+        Text(top, 236, y + 13, "AC " + std::to_string(m.ac) + (m.status.empty() || m.status == "Okay" ? "" : "  " + m.status), kGrey);
+        y += 26;
+    }
+    Fill(top, 16, 190, 368, 1, RGB{160, 60, 60});
+    Text(top, 16, 196, "Tap a square to aim, a word to act", kGrey);
+    Text(top, 16, 208, "D-pad/Circle Pad move (diagonals OK)", kGrey);
+    Text(top, 16, 220, "L/ZL R/ZR diagonals   SELECT swap", kGrey);
+}
+
+// ---------------------------------------------------------------------------
+// The game on the top screen, with optional 3D: the view/picture window
+// (88x88 at 16,16) sits behind the screen; frame and text at the screen.
+// ---------------------------------------------------------------------------
+void BlitGameShifted(const Surface& s, int ox, int oy, int shift) {
+    LightLock_Lock(&frameLock);
+    for (int x = 0; x < 320; x++) {
+        u8* col = s.fb + (size_t)(x + ox) * 240 * 3;
+        for (int y = 0; y < 200; y++) {
+            int sx = x;
+            if (shift && x >= 16 && x < 104 && y >= 16 && y < 104) sx = std::max(16, std::min(103, x - shift));
+            const uint8_t* c = framePal + egaFrame[y * 320 + sx] * 3;
+            u8* p = col + (239 - (y + oy)) * 3;
+            p[0] = c[2];
+            p[1] = c[1];
+            p[2] = c[0];
+        }
+    }
+    LightLock_Unlock(&frameLock);
+}
+
+void DrawGameTop(const Surface& left, const Surface& right, int depth, const char* caption) {
+    Fill(left, 0, 0, 400, 240, kBlack);
+    BlitGameShifted(left, 40, 20, -depth);
+    Text(left, (400 - TextWidth(caption)) / 2, 226, caption, kGrey);
+    if (depth > 0) {
+        Fill(right, 0, 0, 400, 240, kBlack);
+        BlitGameShifted(right, 40, 20, depth);
+        Text(right, (400 - TextWidth(caption)) / 2, 226, caption, kGrey);
+    } else {
+        std::memcpy(right.fb, left.fb, 400 * 240 * 3);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -774,6 +966,24 @@ void AimHide() {
     LightLock_Unlock(&menuLock);
 }
 
+void PartyStatus(const std::vector<PartyMember>& members) {
+    LightLock_Lock(&menuLock);
+    partyMembers = members;
+    LightLock_Unlock(&menuLock);
+}
+
+void MapView(int area, int block, int x, int y, int dir, const uint8_t* cells) {
+    LightLock_Lock(&menuLock);
+    mapState.valid = true;
+    mapState.area = area;
+    mapState.block = block;
+    mapState.x = x;
+    mapState.y = y;
+    mapState.dir = dir;
+    std::memcpy(mapState.cells, cells, 256);
+    LightLock_Unlock(&menuLock);
+}
+
 void EntryBegin(int kind, int maxValue) {
     LightLock_Lock(&menuLock);
     entryKind = kind;
@@ -845,6 +1055,8 @@ int main(int argc, char** argv) {
 
     gfxSetDoubleBuffering(GFX_TOP, true);
     gfxSetDoubleBuffering(GFX_BOTTOM, true);
+    gfxSet3D(true);  // the game window gets depth when the 3D slider is up
+    LoadAutomap();
     std::srand((unsigned)osGetTime());
 
     // Engine thread: lower priority than the UI loop, 1 MB stack, on the
@@ -866,6 +1078,9 @@ int main(int argc, char** argv) {
     u64 dirSince = 0;
     int lastEntry = 0;
     bool quit = false;
+    bool lastCombat = false;
+    int lastMapX = -1, lastMapY = -1, lastMapDir = -1, lastMapBlock = -1;
+    u64 lastSave = 0;
 
     while (aptMainLoop() && !engineDone && !quit) {
         hidScanInput();
@@ -881,12 +1096,46 @@ int main(int argc, char** argv) {
         cx.list = listState;
         cx.roster = rosterState;
         cx.aim = aimState;
+        cx.party = partyMembers;
+        cx.map = mapState;
         cx.acceptsDirections = menuAcceptsDirections;
         cx.entry = entryKind;
         cx.entryMaxValue = entryMax;
         LightLock_Unlock(&menuLock);
         cx.state = host::GameStateNow();
         bool combat = cx.state == kStateCombat;
+        // Automatic layout: the game on the top screen while exploring and in
+        // menus, on the touch screen in combat (stylus aiming). SELECT/SWAP
+        // flips it until combat starts or ends.
+        if (combat != lastCombat) {
+            userFlip = false;
+            lastCombat = combat;
+        }
+        swapped = !combat != userFlip;
+
+        // Automap: mark where the party stands and what it can see ahead.
+        if (cx.map.valid && cx.state == kStateDungeon &&
+            (cx.map.x != lastMapX || cx.map.y != lastMapY || cx.map.dir != lastMapDir || cx.map.block != lastMapBlock)) {
+            int key = cx.map.area * 256 + cx.map.block;
+            MarkExplored(key, cx.map.x, cx.map.y);
+            static const int dx[4] = {0, 1, 0, -1}, dy[4] = {-1, 0, 1, 0};
+            int d = (cx.map.dir & 6) / 2, x = cx.map.x, y = cx.map.y;
+            for (int step = 0; step < 3; step++) {
+                if (cx.map.cells[(y & 15) * 16 + (x & 15)] & (1 << d)) break;  // wall ahead
+                x += dx[d];
+                y += dy[d];
+                if ((unsigned)x >= 16u || (unsigned)y >= 16u) break;
+                MarkExplored(key, x, y);
+            }
+            lastMapX = cx.map.x;
+            lastMapY = cx.map.y;
+            lastMapDir = cx.map.dir;
+            lastMapBlock = cx.map.block;
+        }
+        if (exploredDirty && now >= lastSave + 10000) {
+            SaveAutomap();
+            lastSave = now;
+        }
         bool menuMode = !cx.items.empty() && !cx.acceptsDirections;
 
         // Keyboard opens and closes by itself for text entry.
@@ -935,7 +1184,10 @@ int main(int argc, char** argv) {
 
         // ---- buttons ----
         if ((held & KEY_START) && (held & KEY_SELECT)) quit = true;
-        if ((down & KEY_SELECT) && !(held & KEY_START)) swapped = !swapped;
+        if ((down & KEY_SELECT) && !(held & KEY_START)) {
+            userFlip = !userFlip;
+            swapped = !swapped;
+        }
 
         if (down & KEY_A) host::PushKey(hotMenu ? cx.hot[hotFocus].key : keys::Enter);
         if ((down & KEY_START) && !(held & KEY_SELECT)) host::PushKey(keys::Enter);
@@ -1070,7 +1322,7 @@ int main(int argc, char** argv) {
         else {
             buttons = StripButtons();
             if (swapped) {
-                auto choices = ChoiceButtons(cx);
+                auto choices = ExplorePanelWanted(cx, cx.map) ? ExploreButtons(cx) : ChoiceButtons(cx);
                 buttons.insert(buttons.end(), choices.begin(), choices.end());
             }
         }
@@ -1096,7 +1348,7 @@ int main(int argc, char** argv) {
                 } else if (b->key == kKbPage) {
                     keyboardPage ^= 1;
                 } else if (b->key == kSwap) {
-                    swapped = !swapped;
+                    userFlip = !userFlip;
                 } else if (b->key == kRandomName) {
                     for (int i = 0; i < 16; i++) host::PushKey(keys::Backspace);
                     const char* n = kNames[std::rand() % (sizeof kNames / sizeof kNames[0])];
@@ -1120,10 +1372,14 @@ int main(int argc, char** argv) {
         // ---- draw ----
         u16 w, h;
         Surface top{gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &w, &h), 400};
+        Surface topR{gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, &w, &h), 400};
         Surface bottom{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &w, &h), 320};
+        int depth = (int)(osGet3DSliderState() * 3.0f + 0.5f);
+        bool topDone = false;
 
         if (overlay) {
-            DrawGameOnTop(top, keyboardOpen ? "Keyboard - HIDE to return" : "How much? - OK when done");
+            DrawGameTop(top, topR, 0, keyboardOpen ? "Keyboard - HIDE to return" : "How much? - OK when done");
+            topDone = true;
             Fill(bottom, 0, 0, 320, 240, kDash);
             if (numberPad) {
                 std::string cap = cx.entryMaxValue > 0 ? "Enter an amount (max " + std::to_string(cx.entryMaxValue) + ")"
@@ -1132,11 +1388,21 @@ int main(int argc, char** argv) {
             }
             DrawButtons(bottom, buttons, now);
         } else if (swapped) {
-            DrawGameOnTop(top, "SELECT or SWAP: game back on the touch screen");
+            DrawGameTop(top, topR, depth, "SELECT: game on the touch screen");
+            topDone = true;
             Fill(bottom, 0, 0, 320, 240, kDash);
+            if (ExplorePanelWanted(cx, cx.map)) {
+                DrawAutomap(bottom, 6, 6, 9, cx.map);
+                static const char* dirs[4] = {"North", "East", "South", "West"};
+                char info[40];
+                std::snprintf(info, sizeof info, "%d,%d facing %s", cx.map.x, cx.map.y, dirs[(cx.map.dir & 6) / 2]);
+                Text(bottom, 6, 158, info, kGrey);
+                Text(bottom, 6, 172, "L/R party  B back", kGrey);
+            }
             DrawButtons(bottom, buttons, now);
         } else {
-            DrawDashboard(top, cx);
+            if (combat) DrawCombatPanel(top, cx.party);
+            else DrawDashboard(top, cx);
             BlitGame(bottom, 0, 0);
             if (hotMenu) {  // the host's highlight on the hotkey line
                 const HotLine& h = cx.hot[hotFocus];
@@ -1146,11 +1412,14 @@ int main(int argc, char** argv) {
             DrawButtons(bottom, buttons, now);
         }
 
+        if (!topDone) std::memcpy(topR.fb, top.fb, 400 * 240 * 3);
+
         gfxFlushBuffers();
         gfxSwapBuffers();
         gspWaitForVBlank();
     }
 
+    if (exploredDirty) SaveAutomap();
     host::RequestQuit();
     threadJoin(engine, U64_MAX);
     threadFree(engine);

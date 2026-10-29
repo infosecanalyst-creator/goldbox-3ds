@@ -1,6 +1,7 @@
 // engine/seg049.cpp - hand port of engine/seg049.cs (keyboard queue).
 // The C# Semaphore(0, 1) becomes a binary semaphore on a mutex + condvar.
 // Copyright (c) 2026, the goldbox-3ds contributors. BSD 3-clause (see LICENSE).
+#include <algorithm>
 #include "engine/engine.h"
 #include "engine/harness.h"
 #include "platform/platform.h"
@@ -9,6 +10,17 @@ namespace engine {
 
 void seg049::SysDelay(int milliseconds) {
     if (milliseconds != 0 && !Harness::enabled) {  // harness runs at full speed
+        if (gbl::inDemo && gbl::portEnhancements && seg043::demoAbortArmed) {
+            // goldbox-3ds: the demo mostly waits here; any key ends it.
+            for (int left = milliseconds; left > 0; left -= 20) {
+                if (KEYPRESSED()) {
+                    while (KEYPRESSED()) READKEY();
+                    throw DemoAbort{};
+                }
+                platform::Sleep(std::min(left, 20));
+            }
+            return;
+        }
         platform::Sleep(milliseconds);
     }
 }

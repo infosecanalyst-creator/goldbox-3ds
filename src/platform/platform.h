@@ -69,6 +69,20 @@ void EntryEnd();
 void AimShow(int manual, int mapX, int mapY, int topX, int topY);
 void AimHide();
 
+// The party (published whenever the game draws the party list or a combat
+// summary). `active`: the member the game is showing / whose turn it is.
+struct PartyMember {
+    std::string name, status;
+    int hp = 0, hpMax = 0, ac = 0;
+    bool active = false;
+};
+void PartyStatus(const std::vector<PartyMember>& members);
+
+// The 3D view was drawn (dungeon / town). Map identity (area, geo block),
+// party square and facing (0 N, 2 E, 4 S, 6 W) and the 16x16 map: per cell
+// bits 0-3 walls N/E/S/W, bits 4-7 doors N/E/S/W. Index [y * 16 + x].
+void MapView(int area, int block, int x, int y, int dir, const uint8_t* cells);
+
 // Every character cell the game draws (text row 0..24, column 0..39, EGA
 // colours), so a host can find tappable text such as hotkey menus.
 void TextDrawn(int row, int col, char ch, int fg, int bg);

@@ -1,6 +1,7 @@
 // engine/ovr031.cpp - translation of coab engine/ovr031.cs.
 // Original C#: coab (c) Simeon Pilgrim, BSD-3. Translation: goldbox-3ds contributors.
 #include "engine/engine.h"
+#include "platform/platform.h"
 
 namespace engine {
 
@@ -368,6 +369,31 @@ void ovr031::Draw3dWorld(byte partyDir, int partyPosY, int partyPosX) /* sub_718
 
     Display::UpdateStart();
     seg040::DrawOverlay();
+
+    // goldbox-3ds: tell the host the map and where the party is (automap).
+    if (gbl::portEnhancements)
+    {
+        uint8_t cells[256];
+        for (int y = 0; y < 16; y++)
+            for (int x = 0; x < 16; x++)
+            {
+                uint8_t c = 0;
+                MapInfo mi = getMap_XXX(y, x);
+                if (mi != nullptr)
+                {
+                    if (mi->wall_type_dir_0 > 0) c |= 1;
+                    if (mi->wall_type_dir_2 > 0) c |= 2;
+                    if (mi->wall_type_dir_4 > 0) c |= 4;
+                    if (mi->wall_type_dir_6 > 0) c |= 8;
+                    if (mi->x3_dir_0 > 0) c |= 16;
+                    if (mi->x3_dir_2 > 0) c |= 32;
+                    if (mi->x3_dir_4 > 0) c |= 64;
+                    if (mi->x3_dir_6 > 0) c |= 128;
+                }
+                cells[y * 16 + x] = c;
+            }
+        platform::MapView(gbl::game_area, gbl::area_ptr->current_3DMap_block_id, partyPosX, partyPosY, partyDir, cells);
+    }
 }
 
 

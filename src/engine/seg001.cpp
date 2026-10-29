@@ -149,12 +149,17 @@ void seg001::PROGRAM()
             ovr018::startGameMenu();
         }
 
+        bool demoAborted = false;
         try
         {
+            seg043::demoAbortArmed = gbl::inDemo;
             ovr003::sub_29758();
+            seg043::demoAbortArmed = false;
         }
         catch (const DemoAbort&)
         {
+            seg043::demoAbortArmed = false;
+            demoAborted = true;
             // goldbox-3ds: a key was pressed during the demo - tidy up as the
             // demo's own ending does, then back to the title menu.
             while (gbl::TeamList.Count() > 0)
@@ -171,7 +176,7 @@ void seg001::PROGRAM()
 
         if (gbl::inDemo == true)
         {
-            ovr002::title_screen();
+            if (!demoAborted) ovr002::title_screen();  // goldbox-3ds: straight back to the menu
             seg043::clear_keyboard();
 
             gbl::displayInputSecondsToWait = 10;

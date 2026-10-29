@@ -33,6 +33,7 @@ Result ndspInit(void); void ndspExit(void); void ndspSetOutputMode(ndspOutputMod
 void ndspChnReset(int id); void ndspChnSetInterp(int id, ndspInterpType type); void ndspChnSetFormat(int id, u16 format);
 void ndspChnSetMix(int id, float mix[12]); void ndspChnSetRate(int id, float rate); void ndspChnWaveBufClear(int id); void ndspChnWaveBufAdd(int id, ndspWaveBuf* buf);
 void* linearAlloc(size_t size); Result DSP_FlushDataCache(const void* address, u32 size);
+float osGet3DSliderState(void); void gfxSet3D(bool enable);
 u64 osGetTime(void); void osSetSpeedupEnable(bool enable);
 Thread threadCreate(ThreadFunc entrypoint, void* arg, size_t stack_size, int prio, int core_id, bool detached);
 Result threadJoin(Thread thread, u64 timeout_ns); void threadFree(Thread thread);

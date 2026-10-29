@@ -32,7 +32,7 @@ byte seg043::GetInputKey()
         if (seg049::KEYPRESSED() == true)
         {
             key = seg049::READKEY();
-            if (gbl::portEnhancements)  // goldbox-3ds: any key ends the demo
+            if (gbl::portEnhancements && demoAbortArmed)  // goldbox-3ds: any key ends the demo
             {
                 while (seg049::KEYPRESSED() == true) seg049::READKEY();
                 throw DemoAbort{};

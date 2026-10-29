@@ -10,6 +10,7 @@ struct DemoAbort {};
 
 struct seg043 {
     inline static bool in_print_and_exit = false;
+    inline static bool demoAbortArmed = false;  // goldbox-3ds: the demo is running inside PROGRAM's try
     static void print_and_exit();
     static byte GetInputKey();
     static void DumpPlayerAffects();

@@ -215,8 +215,28 @@ void ovr025::ItemDisplayNameBuild(bool display_new_name, bool displayReadied,
 }
 
 
+// goldbox-3ds: publish the party to the host (display-only).
+static void PublishParty(Player active)
+{
+    std::vector<platform::PartyMember> members;
+    for (Player p : gbl::TeamList)
+    {
+        platform::PartyMember m;
+        m.name = p->name;
+        m.hp = p->hit_point_current;
+        m.hpMax = p->hit_point_max;
+        m.ac = p->DisplayAc();
+        int st = (int)p->health_status;
+        if (st >= 0 && st < ovr020::statusString.Length()) m.status = ovr020::statusString[st];
+        m.active = p == active;
+        members.push_back(m);
+    }
+    platform::PartyStatus(members);
+}
+
 void ovr025::PartySummary(Player player)
 {
+    PublishParty(player);
     if (gbl::game_state == GameState::WildernessMap)
     {
         return;
@@ -296,6 +316,7 @@ void ovr025::display_hp(bool hightlighted, int y_pos, int x_pos, Player player)
 
 void ovr025::CombatDisplayPlayerSummary(Player player) /* hitpoint_ac */
 {
+    if (player != nullptr) PublishParty(player);
     if (gbl::display_hitpoints_ac == true)
     {
         gbl::display_hitpoints_ac = false;
