@@ -46,6 +46,14 @@ the Krynn and Savage Frontier games, etc.
   the Aim menu L/R = previous/next target. ZL / ZR page lists.
 - Hold START + SELECT for a second to quit.
 
+## Text must fit (checked on every build)
+- No text may be cut off: buttons, tabs, headers, help lines, dashboards.
+  Labels wrap to two lines on buttons 19+ px tall; tabs use short names; help
+  lines stay within 39 characters on the bottom screen (48 on the top, 8x8 font).
+- The host logs any text that runs off a screen or any label it had to shorten
+  to `sdmc:/3ds/goldbox/user/textfit.log`. Before calling a build done, review
+  new screens for fit and pull that log over FTP; fix anything in it.
+
 ## 3D
 - Subtle, slider-controlled stereo only in the dungeon view: the engine tags
   pixels with depth layers while drawing (sky/floor graded by row, far/mid/near

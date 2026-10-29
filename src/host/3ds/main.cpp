@@ -186,8 +186,24 @@ void Frame(const Surface& s, int x, int y, int w, int h, RGB c) {
     Fill(s, x + w - 1, y, 1, h, c);
 }
 
+// Text-fit check: any text that would run off a screen, or a label that had
+// to be shortened, is written once to sdmc:/3ds/goldbox/user/textfit.log so
+// cut-off text is caught on the device (checked after every build).
+void ReportCutText(const char* where, const std::string& str) {
+    static std::vector<std::string> seen;
+    std::string key = std::string(where) + ": " + str;
+    if (std::find(seen.begin(), seen.end(), key) != seen.end() || seen.size() > 500) return;
+    seen.push_back(key);
+    if (FILE* f = std::fopen("sdmc:/3ds/goldbox/user/textfit.log", "a")) {
+        std::fprintf(f, "%s\n", key.c_str());
+        std::fclose(f);
+    }
+}
+
 // Text in the clear 8x8 font (platform/readable_font.h).
 void Text(const Surface& s, int x, int y, const std::string& str, RGB c, int scale = 1) {
+    if (x < 0 || x + (int)str.size() * 8 * scale > s.w || y < 0 || y + 8 * scale > 240)
+        ReportCutText(s.w == 400 ? "top" : "bottom", str);
     for (char ch : str) {
         const uint8_t* g = ReadableGlyph((unsigned char)ch);
         if (!g) g = ReadableGlyph('?');
@@ -204,6 +220,18 @@ void Text(const Surface& s, int x, int y, const std::string& str, RGB c, int sca
 }
 
 int TextWidth(const std::string& str, int scale = 1) { return (int)str.size() * 8 * scale; }
+
+// Text in a box maxW pixels wide: large (scale 2) when it fits, otherwise
+// normal size; only if even that is too long is it shortened (and logged).
+void TextFit(const Surface& s, int x, int y, int maxW, std::string str, RGB c, bool large = true) {
+    if (large && TextWidth(str, 2) <= maxW) return Text(s, x, y + 0, str, c, 2);
+    int yy = large ? y + 4 : y;
+    if (TextWidth(str) > maxW) {
+        ReportCutText("fit", str);
+        str.resize(std::max(1, maxW / 8));
+    }
+    Text(s, x, yy, str, c);
+}
 
 // The game frame, 1:1, at (ox, oy).
 void BlitGame(const Surface& s, int ox, int oy) {
@@ -408,13 +436,19 @@ void DrawButtons(const Surface& s, const std::vector<Button>& bs, u64 now) {
             if (cut == std::string::npos || cut == 0) cut = maxChars;
             std::string l1 = label.substr(0, cut), l2 = label.substr(cut);
             while (!l2.empty() && l2[0] == ' ') l2.erase(0, 1);
-            if ((int)l2.size() > maxChars) l2.resize(maxChars);
+            if ((int)l2.size() > maxChars) {
+                ReportCutText("button", b.label);
+                l2.resize(maxChars);
+            }
             int y = b.y + (b.h - 18) / 2;
             Text(s, b.x + (b.w - TextWidth(l1)) / 2, y, l1, tc);
             Text(s, b.x + (b.w - TextWidth(l2)) / 2, y + 10, l2, tc);
             continue;
         }
-        if ((int)label.size() > maxChars) label.resize(maxChars);
+        if ((int)label.size() > maxChars) {
+            ReportCutText("button", b.label);
+            label.resize(maxChars);
+        }
         Text(s, b.x + (b.w - TextWidth(label)) / 2, b.y + (b.h - 8) / 2, label, tc);
     }
 }
@@ -747,10 +781,22 @@ void DrawDashboard(const Surface& top, const Context& cx) {
         if (p.size() <= 23) {
             Text(top, 16, y, p, kCyan, 2);
             y += 20;
-        } else {  // long prompts in normal size, up to two lines
-            Text(top, 16, y, p.substr(0, 46), kCyan);
-            if (p.size() > 46) Text(top, 16, y + 10, p.substr(46, 46), kCyan);
-            y += p.size() > 46 ? 24 : 14;
+        } else {  // long prompts in normal size, wrapped at spaces (up to 3 lines)
+            std::vector<std::string> lines;
+            std::string line;
+            size_t i = 0;
+            while (i < p.size()) {
+                size_t j = p.find(' ', i);
+                if (j == std::string::npos) j = p.size();
+                std::string word = p.substr(i, j - i);
+                if (!line.empty() && line.size() + 1 + word.size() > 46) { lines.push_back(line); line.clear(); }
+                line += (line.empty() ? "" : " ") + word;
+                i = j + 1;
+            }
+            if (!line.empty()) lines.push_back(line);
+            if (lines.size() > 3) ReportCutText("prompt", p);
+            for (size_t k = 0; k < lines.size() && k < 3; k++) TextFit(top, 16, y + (int)k * 10, 368, lines[k], kCyan, false);
+            y += (int)std::min<size_t>(lines.size(), 3) * 10 + 4;
         }
     }
     if (cx.list.active) {
@@ -758,26 +804,23 @@ void DrawDashboard(const Surface& top, const Context& cx) {
         int first = std::max(0, std::min(cx.list.hl - 3, cx.list.rows - 7));
         for (int i = first; i < cx.list.rows && i < first + 7; i++) {
             std::string t = RowText(cx.list.row0 + i, cx.list.col0, cx.list.col1);
-            if (t.size() > 22) t.resize(22);
-            Text(top, 24, y + (i - first) * 18, t, i == cx.list.hl ? kGold : kWhite, 2);
+            TextFit(top, 24, y + (i - first) * 18, 368, t, i == cx.list.hl ? kGold : kWhite);
         }
     } else if (!cx.hot.empty()) {
         bool big = cx.hot.size() <= 7;
         for (size_t i = 0; i < cx.hot.size() && i < 12; i++) {
             std::string t = cx.hot[i].label;
             if (big) {
-                if (t.size() > 22) t.resize(22);
-                Text(top, 24, y + (int)i * 18, t, (int)i == hotFocus ? kGold : kWhite, 2);
+                TextFit(top, 24, y + (int)i * 18, 368, t, (int)i == hotFocus ? kGold : kWhite);
             } else {
-                Text(top, 24, y + (int)i * 11, ((int)i == hotFocus ? "> " : "  ") + t, (int)i == hotFocus ? kGold : kWhite);
+                TextFit(top, 24, y + (int)i * 11, 368, ((int)i == hotFocus ? "> " : "  ") + t, (int)i == hotFocus ? kGold : kWhite, false);
             }
         }
     } else if (!cx.words.empty()) {
         int shown = std::min<int>((int)cx.words.size(), 8);
         for (int i = 0; i < shown; i++) {
             std::string label = cx.words[i].label;
-            if (label.size() > 11) label.resize(11);
-            Text(top, 16 + (i % 2) * 188, y + (i / 2) * 18, label, kWhite, 2);
+            TextFit(top, 16 + (i % 2) * 188, y + (i / 2) * 18, 180, label, kWhite);
         }
         y += ((shown + 1) / 2) * 18 + 4;
     } else {
@@ -903,7 +946,7 @@ void DrawCombatPanel(const Surface& top, const std::vector<platform::PartyMember
         Fill(top, bx, y + 2, bw, 10, RGB{50, 30, 30});
         Fill(top, bx, y + 2, frac, 10, bar);
         Text(top, bx + bw + 6, y + 3, std::to_string(m.hp), name);
-        Text(top, 236, y + 13, "AC " + std::to_string(m.ac) + (m.status.empty() || m.status == "Okay" ? "" : "  " + m.status), kGrey);
+        TextFit(top, 236, y + 13, 156, "AC " + std::to_string(m.ac) + (m.status.empty() || m.status == "Okay" ? "" : "  " + m.status), kGrey, false);
         y += party.size() > 6 ? 19 : 26;
     }
     Fill(top, 16, 190, 368, 1, RGB{160, 60, 60});
