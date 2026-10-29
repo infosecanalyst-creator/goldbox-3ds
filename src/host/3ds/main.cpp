@@ -400,9 +400,22 @@ void DrawButtons(const Surface& s, const std::vector<Button>& bs, u64 now) {
         Fill(s, b.x, b.y, b.w, b.h, face);
         Frame(s, b.x, b.y, b.w, b.h, b.selected ? kGold : kBtnEdge);
         std::string label = b.label;
+        RGB tc = lit ? kBlack : b.selected ? kGold : kWhite;
         int maxChars = std::max(1, (b.w - 6) / 8);
+        if ((int)label.size() > maxChars && b.h >= 19) {
+            // Two lines, broken at a space where possible.
+            size_t cut = label.rfind(' ', maxChars);
+            if (cut == std::string::npos || cut == 0) cut = maxChars;
+            std::string l1 = label.substr(0, cut), l2 = label.substr(cut);
+            while (!l2.empty() && l2[0] == ' ') l2.erase(0, 1);
+            if ((int)l2.size() > maxChars) l2.resize(maxChars);
+            int y = b.y + (b.h - 18) / 2;
+            Text(s, b.x + (b.w - TextWidth(l1)) / 2, y, l1, tc);
+            Text(s, b.x + (b.w - TextWidth(l2)) / 2, y + 10, l2, tc);
+            continue;
+        }
         if ((int)label.size() > maxChars) label.resize(maxChars);
-        Text(s, b.x + (b.w - TextWidth(label)) / 2, b.y + (b.h - 8) / 2, label, lit ? kBlack : b.selected ? kGold : kWhite);
+        Text(s, b.x + (b.w - TextWidth(label)) / 2, b.y + (b.h - 8) / 2, label, tc);
     }
 }
 
@@ -1011,6 +1024,7 @@ struct BookSection {
 };
 struct Book {
     std::string title;
+    std::string tab;  // short tab name, from the file name ("3-manual.txt" -> "Manual")
     std::vector<BookSection> sections;
 };
 std::vector<Book> books;
@@ -1064,7 +1078,7 @@ void LoadBookFile(const std::string& path) {
         if (line.rfind("## ", 0) == 0) {
             flush();
             b.sections.push_back({line.substr(3), {}});
-        } else if (line.rfind("# ", 0) == 0) {
+        } else if (line.rfind("# ", 0) == 0 && b.title.empty()) {
             flush();
             b.title = line.substr(2);
         } else if (line.empty()) {
@@ -1076,6 +1090,13 @@ void LoadBookFile(const std::string& path) {
     flush();
     std::fclose(f);
     if (b.title.empty()) b.title = "Book";
+    std::string stem = path.substr(path.rfind('/') + 1);
+    stem = stem.substr(0, stem.size() - 4);
+    if (stem.size() > 2 && std::isdigit((unsigned char)stem[0]) && stem[1] == '-') stem = stem.substr(2);
+    if (stem == "controls") stem = "help";
+    else if (stem == "quickref") stem = "ref";
+    if (!stem.empty()) stem[0] = (char)std::toupper((unsigned char)stem[0]);
+    b.tab = stem.substr(0, 7);
     if (!b.sections.empty()) books.push_back(b);
 }
 
@@ -1121,21 +1142,22 @@ void OpenViewerAtEntry(int entry) {
 
 // Section buttons for the current book: a grid of numbers for the journal,
 // two columns of titles otherwise. Scrolls to keep the focus in view.
+constexpr uint16_t kViewerPageUp = 0xD001, kViewerPageDown = 0xD002;
 std::vector<Button> ViewerButtons() {
     std::vector<Button> b;
     // Tabs
-    int nb = (int)books.size() + 1, gap = 2, tw = (320 - gap * (nb + 1)) / nb;
-    for (int i = 0; i < (int)books.size(); i++) {
-        Button t{gap + i * (tw + gap), 2, tw, 24, (uint16_t)(0xF000 + i), books[i].title};
+    int nb = (int)books.size(), gap = 2, cw = 50, tw = (320 - cw - gap * (nb + 2)) / std::max(1, nb);
+    for (int i = 0; i < nb; i++) {
+        Button t{gap + i * (tw + gap), 2, tw, 24, (uint16_t)(0xF000 + i), books[i].tab};
         t.selected = i == viewer.book;
         b.push_back(t);
     }
-    b.push_back({gap + (nb - 1) * (tw + gap), 2, tw, 24, kBook, "CLOSE"});
+    b.push_back({320 - gap - cw, 2, cw, 24, kBook, "CLOSE"});
     if (books.empty()) return b;
     const Book& bk = books[viewer.book];
     int n = (int)bk.sections.size();
     bool grid = IsJournal(bk);
-    int cols = grid ? 8 : 2, bw = grid ? 37 : 156, bh = grid ? 24 : 22, rowsVisible = grid ? 8 : 9;
+    int cols = grid ? 8 : 2, bw = grid ? 37 : 155, bh = grid ? 20 : 22, rowsVisible = grid ? 7 : 7;
     int focusRow = viewer.focus / cols, firstRow = std::max(0, focusRow - rowsVisible / 2);
     int totalRows = (n + cols - 1) / cols;
     firstRow = std::max(0, std::min(firstRow, totalRows - rowsVisible));
@@ -1144,6 +1166,10 @@ std::vector<Button> ViewerButtons() {
         Button sb{4 + c * (bw + 2), 30 + r * (bh + 2), bw, bh, (uint16_t)(0xE000 + i), SectionLabel(bk, bk.sections[i])};
         sb.selected = i == viewer.section;
         b.push_back(sb);
+    }
+    if (totalRows > rowsVisible) {  // more sections than fit: page buttons
+        b.push_back({222, 206, 46, 30, kViewerPageUp, "UP"});
+        b.push_back({272, 206, 46, 30, kViewerPageDown, "DOWN"});
     }
     return b;
 }
@@ -1193,7 +1219,10 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
         touchPosition t;
         hidTouchRead(&t);
         if (const Button* b = ButtonAt(buttons, t.px, t.py)) {
+            int page = (IsJournal(bk) ? 8 : 2) * 7;
             if (b->key == kBook) viewer.open = false;
+            else if (b->key == kViewerPageUp) viewer.focus = std::max(0, viewer.focus - page);
+            else if (b->key == kViewerPageDown) viewer.focus = std::min(n - 1, viewer.focus + page);
             else if (b->key >= 0xF000) {
                 viewer.book = b->key - 0xF000;
                 viewer.section = viewer.focus = viewer.scroll = 0;
@@ -1207,7 +1236,9 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
     int maxS2 = std::max(0, (int)s2.lines.size() - kTextRows);
     viewer.scroll = std::min(viewer.scroll, maxS2);
     Fill(top, 0, 0, 400, 240, RGB{14, 12, 6});
-    Text(top, 8, 4, bk2.title + "  -  " + s2.title.substr(0, 34), kGold);
+    std::string head = bk2.tab + " - " + s2.title;
+    if (head.size() > 48) head = head.substr(0, 47) + ".";
+    Text(top, 8, 4, head, kGold);
     Fill(top, 8, 14, 384, 1, RGB{120, 100, 40});
     for (int i = 0; i < kTextRows && viewer.scroll + i < (int)s2.lines.size(); i++)
         Text(top, 8, 19 + i * 9, s2.lines[viewer.scroll + i], RGB{235, 225, 200});
@@ -1224,8 +1255,9 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
     DrawButtons(bottom, buttons, now);
     for (auto& b : buttons)
         if (b.key == 0xE000 + viewer.focus) Frame(bottom, b.x - 2, b.y - 2, b.w + 4, b.h + 4, kWhite);
-    Text(bottom, 4, 218, "Pad/C-Stick scroll  D-Pad+A pick  L/R prev/next", kGrey);
-    Text(bottom, 4, 229, "Tap a section     B or START close", kGrey);
+    Text(bottom, 4, 208, "Stick: scroll text", kGrey);
+    Text(bottom, 4, 218, "D-Pad+A pick  L/R prev/next", kGrey);
+    Text(bottom, 4, 228, "B or START: close", kGrey);
 }
 
 // "...READ JOURNAL ENTRY 12..." on the game screen: the entry number, or 0.
