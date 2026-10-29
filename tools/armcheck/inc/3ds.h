@@ -28,7 +28,7 @@ u8* gfxGetFramebuffer(gfxScreen_t screen, gfx3dSide_t side, u16* width, u16* hei
 void gfxFlushBuffers(void); void gfxSwapBuffers(void); void gspWaitForVBlank(void);
 PrintConsole* consoleInit(gfxScreen_t screen, PrintConsole* console); PrintConsole* consoleSelect(PrintConsole* console); void consoleClear(void);
 Result romfsInit(void); Result romfsExit(void);
-void hidScanInput(void); u32 hidKeysDown(void); u32 hidKeysHeld(void); void hidTouchRead(touchPosition* pos);
+void hidScanInput(void); u32 hidKeysUp(void); u32 hidKeysDown(void); u32 hidKeysHeld(void); void hidTouchRead(touchPosition* pos);
 Result ndspInit(void); void ndspExit(void); void ndspSetOutputMode(ndspOutputMode mode);
 void ndspChnReset(int id); void ndspChnSetInterp(int id, ndspInterpType type); void ndspChnSetFormat(int id, u16 format);
 void ndspChnSetMix(int id, float mix[12]); void ndspChnSetRate(int id, float rate); void ndspChnWaveBufClear(int id); void ndspChnWaveBufAdd(int id, ndspWaveBuf* buf);

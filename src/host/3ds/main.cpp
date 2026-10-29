@@ -1,12 +1,12 @@
 // host/3ds/main.cpp - Nintendo 3DS host (New 3DS / New 3DS XL).
 //
-// Two layouts, swapped with SELECT:
-//  * Normal: the game on the bottom (touch) screen, 320x200 pixel for pixel,
-//    with a strip of big buttons underneath; a dashboard on the top screen
-//    (the current choices in large type, party, controls).
-//  * Swapped: the game on the top screen; the bottom screen turns the game's
-//    current choices (menu words, list entries, hotkey lines, party members)
-//    into large buttons.
+// Layout switches by itself:
+//  * Exploring and menus: the game on the top screen (3D slider: the view
+//    window sits behind the frame); the touch screen shows the automap and
+//    the game's current choices as large buttons.
+//  * Combat: the game on the touch screen (tap to aim), the combat menu as
+//    big buttons underneath, and a combat panel (party HP) on top.
+//  SELECT / SWAP flips the automatic choice until combat starts or ends.
 // A keyboard opens by itself when the game wants text (names, riddles) and a
 // number pad when it asks "How much..."; KEYS opens the keyboard any time.
 //
@@ -16,9 +16,10 @@
 //
 // Controls: D-pad / Circle Pad = move (8 ways in combat), or move the
 //           highlight in menus and lists; A/START = Enter; B = Esc; X = Yes;
-//           Y = Space; L/R = previous/next party member (combat: diagonals
-//           with ZL/ZR); ZL/ZR = page up/down in lists; SELECT = swap screens;
-//           START+SELECT = quit.
+//           Y = Space (Backspace while typing); L/R = previous/next party
+//           member (combat: diagonals with ZL/ZR; "Aim:" previous/next
+//           target); ZL/ZR = page up/down in lists; SELECT = swap screens;
+//           hold START+SELECT = quit.
 //
 // Data: put the game's files (*.DAX, ITEMS, ...) in sdmc:/3ds/goldbox/cotab/
 // Saves and logs go to sdmc:/3ds/goldbox/user/.
@@ -231,6 +232,7 @@ std::vector<platform::PartyMember> partyMembers;
 // The map the game last drew in 3D (for the automap).
 struct MapState {
     bool valid = false;
+    int version = 0;  // bumped by every MapView
     int area = 0, block = 0, x = 0, y = 0, dir = 0;
     uint8_t cells[256] = {};
 };
@@ -347,7 +349,8 @@ std::vector<Button> KeyboardButtons(bool nameEntry) {
         int x0 = (320 - (len * kw + (len - 1) * gap)) / 2;
         for (int i = 0; i < len; i++) {
             char c = rows[r][i];
-            uint16_t key = c == '-' ? keys::Minus : c == '.' ? keys::Period : c == ',' ? keys::Comma : keys::Letter(c);
+            // '-' as the real IBM key (scan 0x0C, ASCII '-') so text entry keeps it
+            uint16_t key = c == '-' ? (uint16_t)0x0C2D : c == '.' ? keys::Period : c == ',' ? keys::Comma : keys::Letter(c);
             b.push_back({x0 + i * (kw + gap), 8 + r * (kh + gap), kw, kh, key, std::string(1, c)});
         }
     }
@@ -359,14 +362,14 @@ std::vector<Button> KeyboardButtons(bool nameEntry) {
     y += kh + gap;
     b.push_back({4, y, 60, kh, kKbPage, keyboardPage == 0 ? "-.," : "ABC"});
     if (nameEntry) b.push_back({68, y, 116, kh, kRandomName, "RANDOM"});
-    else b.push_back({68, y, 116, kh, keys::Delete, "DEL"});
+    else b.push_back({68, y, 116, kh, kNumClear, "CLEAR"});
     b.push_back({188, y, 128, kh, kToggleKeyboard, "HIDE"});
     return b;
 }
 
 std::vector<Button> NumberPadButtons(int maxValue) {
     std::vector<Button> b;
-    const int kw = 64, kh = 40, gap = 6, x0 = (320 - (3 * kw + 2 * gap)) / 2, y0 = 30;
+    const int kw = 58, kh = 40, gap = 5, x0 = 8, y0 = 30;
     static const char* digits = "789456123";
     for (int i = 0; i < 9; i++)
         b.push_back({x0 + (i % 3) * (kw + gap), y0 + (i / 3) * (kh + gap), kw, kh, (uint16_t)digits[i], std::string(1, digits[i])});
@@ -507,6 +510,16 @@ uint16_t ListActionKey(const std::vector<platform::MenuItem>& items) {
     return keys::Enter;
 }
 
+int ListVerbCount(const std::vector<platform::MenuItem>& items) {
+    int n = 0;
+    for (auto& it : items) {
+        std::string l = it.label;
+        for (auto& ch : l) ch = (char)std::tolower((unsigned char)ch);
+        if (l != "next" && l != "prev" && l != "exit") n++;
+    }
+    return n;
+}
+
 bool MenuSaysContinue(const std::string& prompt, const std::vector<platform::MenuItem>& items) {
     std::string all = prompt;
     for (auto& it : items) all += " " + it.label;
@@ -524,10 +537,22 @@ struct Walk {
     u64 nextStep = 0;
     int ax = 0, ay = 0;  // kind 3: map square to aim at
     u64 started = 0;
+    int row0 = 0;           // kind 1: the list's first row (a different list cancels)
+    bool thenAct = false;   // kind 1: send the list's verb on arrival
+    bool sawManual = false; // kind 3: the free cursor appeared
+    int lastSeen = -1;
+    u64 lastProgress = 0;
 };
 Walk walk;
 
-void StartWalk(int kind, int target, u64 now) { walk = {kind, target, 0, -1, now, 0, 0, now}; }
+void StartWalk(int kind, int target, u64 now) {
+    walk = Walk{};
+    walk.kind = kind;
+    walk.target = target;
+    walk.nextStep = now;
+    walk.started = now;
+    walk.lastProgress = now;
+}
 
 // ---------------------------------------------------------------------------
 // Taps
@@ -565,6 +590,8 @@ uint16_t GameTap(int px, int py, const Context& cx, u64 now) {
         int target = r - list.row0;
         if (target == list.hl) return ListActionKey(cx.items);
         StartWalk(1, target, now);
+        walk.row0 = list.row0;
+        walk.thenAct = ListVerbCount(cx.items) == 1;  // one verb (Select): pick it; else just highlight
         flashRow = target;
         return 0;
     }
@@ -613,7 +640,7 @@ uint16_t GameTap(int px, int py, const Context& cx, u64 now) {
         return py < 70 ? keys::Up : keys::Down;
     }
     // "Press enter to continue" and plain key waits: tap anywhere.
-    if (cx.items.empty() || MenuSaysContinue(cx.prompt, cx.items)) return keys::Enter;
+    if ((cx.items.empty() || MenuSaysContinue(cx.prompt, cx.items)) && host::PendingKeys() == 0) return keys::Enter;
     return 0;
 }
 
@@ -637,11 +664,22 @@ std::vector<Button> ChoiceButtons(const Context& cx) {
             }
         }
     } else if (!cx.hot.empty()) {
-        for (size_t i = 0; i < cx.hot.size() && i < 6; i++) {
-            Button bt{x0, y, w, 24, cx.hot[i].key, cx.hot[i].label};
-            bt.selected = (int)i == hotFocus;
-            b.push_back(bt);
-            y += 27;
+        int n = (int)cx.hot.size();
+        if (n <= 6) {
+            for (int i = 0; i < n; i++) {
+                Button bt{x0, y, w, 24, cx.hot[i].key, cx.hot[i].label};
+                bt.selected = i == hotFocus;
+                b.push_back(bt);
+                y += 27;
+            }
+        } else {  // up to 12 lines (the start menu) in two columns
+            int bw = (w - 4) / 2, rows = (std::min(n, 12) + 1) / 2;
+            for (int i = 0; i < n && i < 12; i++) {
+                Button bt{x0 + (i / rows) * (bw + 4), y + (i % rows) * 30, bw, 27, cx.hot[i].key, cx.hot[i].label};
+                bt.selected = i == hotFocus;
+                b.push_back(bt);
+            }
+            y += rows * 30;
         }
     }
     // Menu words: up to 4 per row.
@@ -700,10 +738,15 @@ void DrawDashboard(const Surface& top, const Context& cx) {
             Text(top, 24, y + (i - first) * 18, t, i == cx.list.hl ? kGold : kWhite, 2);
         }
     } else if (!cx.hot.empty()) {
-        for (size_t i = 0; i < cx.hot.size() && i < 7; i++) {
+        bool big = cx.hot.size() <= 7;
+        for (size_t i = 0; i < cx.hot.size() && i < 12; i++) {
             std::string t = cx.hot[i].label;
-            if (t.size() > 22) t.resize(22);
-            Text(top, 24, y + (int)i * 18, t, (int)i == hotFocus ? kGold : kWhite, 2);
+            if (big) {
+                if (t.size() > 22) t.resize(22);
+                Text(top, 24, y + (int)i * 18, t, (int)i == hotFocus ? kGold : kWhite, 2);
+            } else {
+                Text(top, 24, y + (int)i * 11, ((int)i == hotFocus ? "> " : "  ") + t, (int)i == hotFocus ? kGold : kWhite);
+            }
         }
     } else if (!cx.words.empty()) {
         int shown = std::min<int>((int)cx.words.size(), 8);
@@ -726,7 +769,7 @@ void DrawDashboard(const Surface& top, const Context& cx) {
             std::snprintf(line, sizeof line, "%c %-15s HP %3d/%-3d AC %d", m.active ? '>' : ' ', m.name.substr(0, 15).c_str(),
                           m.hp, m.hpMax, m.ac);
             Text(top, 16, y, line, m.active ? kGold : kGrey);  // NOLINT
-            y += 11;
+            y += cx.party.size() > 6 ? 9 : 11;
         }
     }
 
@@ -800,6 +843,17 @@ std::vector<Button> ExploreButtons(const Context& cx) {
     return b;
 }
 
+// Combat with the game on the touch screen: the strip shows the combat menu
+// words (Move, View, Aim, Use, Cast ...) as big buttons, plus ESC.
+std::vector<Button> CombatStrip(const Context& cx) {
+    std::vector<Button> b;
+    int n = std::min<int>((int)cx.words.size(), 7) + 1, gap = 2, w = (320 - gap * (n + 1)) / n;
+    for (int i = 0; i < n - 1; i++)
+        b.push_back({gap + i * (w + gap), 203, w, 34, keys::Letter(cx.words[i].key), cx.words[i].label});
+    b.push_back({gap + (n - 1) * (w + gap), 203, w, 34, keys::Escape, "ESC"});
+    return b;
+}
+
 // ---------------------------------------------------------------------------
 // Combat panel (top screen while the game is on the touch screen in combat)
 // ---------------------------------------------------------------------------
@@ -822,7 +876,7 @@ void DrawCombatPanel(const Surface& top, const std::vector<platform::PartyMember
         Fill(top, bx, y + 2, frac, 10, bar);
         Text(top, bx + bw + 6, y + 3, std::to_string(m.hp), name);
         Text(top, 236, y + 13, "AC " + std::to_string(m.ac) + (m.status.empty() || m.status == "Okay" ? "" : "  " + m.status), kGrey);
-        y += 26;
+        y += party.size() > 6 ? 19 : 26;
     }
     Fill(top, 16, 190, 368, 1, RGB{160, 60, 60});
     Text(top, 16, 196, "Tap a square to aim, a word to act", kGrey);
@@ -840,8 +894,13 @@ void BlitGameShifted(const Surface& s, int ox, int oy, int shift) {
         u8* col = s.fb + (size_t)(x + ox) * 240 * 3;
         for (int y = 0; y < 200; y++) {
             int sx = x;
-            if (shift && x >= 16 && x < 104 && y >= 16 && y < 104) sx = std::max(16, std::min(103, x - shift));
-            const uint8_t* c = framePal + egaFrame[y * 320 + sx] * 3;
+            bool black = false;
+            if (shift && x >= 16 && x < 104 && y >= 16 && y < 104) {
+                sx = x - shift;
+                black = sx < 16 || sx > 103;  // uncovered by the shift: dark, not smeared
+            }
+            static const uint8_t kZero[3] = {0, 0, 0};
+            const uint8_t* c = black ? kZero : framePal + egaFrame[y * 320 + sx] * 3;
             u8* p = col + (239 - (y + oy)) * 3;
             p[0] = c[2];
             p[1] = c[1];
@@ -975,6 +1034,7 @@ void PartyStatus(const std::vector<PartyMember>& members) {
 void MapView(int area, int block, int x, int y, int dir, const uint8_t* cells) {
     LightLock_Lock(&menuLock);
     mapState.valid = true;
+    mapState.version++;
     mapState.area = area;
     mapState.block = block;
     mapState.x = x;
@@ -1078,6 +1138,9 @@ int main(int argc, char** argv) {
     u64 dirSince = 0;
     int lastEntry = 0;
     bool quit = false;
+    u64 quitSince = 0;
+    int mapLeftVersion = -1;
+    bool startUsedForCombo = false;
     bool lastCombat = false;
     int lastMapX = -1, lastMapY = -1, lastMapDir = -1, lastMapBlock = -1;
     u64 lastSave = 0;
@@ -1104,6 +1167,10 @@ int main(int argc, char** argv) {
         LightLock_Unlock(&menuLock);
         cx.state = host::GameStateNow();
         bool combat = cx.state == kStateCombat;
+        // Leaving the 3D view (wilderness, load, combat) makes the map stale
+        // until the game draws the 3D view again.
+        if (cx.state != kStateDungeon) mapLeftVersion = cx.map.version;
+        if (cx.map.version == mapLeftVersion) cx.map.valid = false;
         // Automatic layout: the game on the top screen while exploring and in
         // menus, on the touch screen in combat (stylus aiming). SELECT/SWAP
         // flips it until combat starts or ends.
@@ -1132,7 +1199,7 @@ int main(int argc, char** argv) {
             lastMapDir = cx.map.dir;
             lastMapBlock = cx.map.block;
         }
-        if (exploredDirty && now >= lastSave + 10000) {
+        if (exploredDirty && (now >= lastSave + 60000 || cx.state != kStateDungeon)) {
             SaveAutomap();
             lastSave = now;
         }
@@ -1183,18 +1250,35 @@ int main(int argc, char** argv) {
             for (auto& it : cx.items) explore3d |= it.label == "Area";
 
         // ---- buttons ----
-        if ((held & KEY_START) && (held & KEY_SELECT)) quit = true;
+        // Quit: hold START+SELECT for a second (a warning shows meanwhile).
+        if ((held & KEY_START) && (held & KEY_SELECT)) {
+            if (!quitSince) quitSince = now;
+            if (now >= quitSince + 1000) quit = true;
+            startUsedForCombo = true;
+        } else {
+            quitSince = 0;
+        }
         if ((down & KEY_SELECT) && !(held & KEY_START)) {
             userFlip = !userFlip;
             swapped = !swapped;
         }
 
         if (down & KEY_A) host::PushKey(hotMenu ? cx.hot[hotFocus].key : keys::Enter);
-        if ((down & KEY_START) && !(held & KEY_SELECT)) host::PushKey(keys::Enter);
+        // START = Enter on release, unless it was part of START+SELECT.
+        if (down & KEY_START) startUsedForCombo = (held & KEY_SELECT) != 0;
+        if ((hidKeysUp() & KEY_START) && !startUsedForCombo) host::PushKey(keys::Enter);
         if (down & KEY_B) host::PushKey(keys::Escape);
-        if (down & KEY_Y) host::PushKey(keys::Space);
-        if (down & KEY_X) host::PushKey(keys::Letter('Y'));  // common "Yes" answer
-        if (combat) {
+        if (cx.entry == 1 || cx.entry == 2) {
+            if (down & KEY_Y) host::PushKey(keys::Backspace);  // typing: Y deletes, X does nothing
+        } else {
+            if (down & KEY_Y) host::PushKey(keys::Space);
+            if (down & KEY_X) host::PushKey(keys::Letter('Y'));  // common "Yes" answer
+        }
+        if (combat && cx.aim.active && !cx.aim.manual) {
+            // "Aim:" menu: L/R = previous / next target.
+            if (down & KEY_L) host::PushKey(keys::Letter('P'));
+            if (down & KEY_R) host::PushKey(keys::Letter('N'));
+        } else if (combat) {
             // Shoulders = diagonals: left shoulders go left, right go right.
             if (down & KEY_L) host::PushKey(keys::Home);
             if (down & KEY_ZL) host::PushKey(keys::End);
@@ -1274,7 +1358,9 @@ int main(int argc, char** argv) {
             sendDir(dirKey);
             dirSent = true;
             nextRepeat = now + 350;
-        } else if (dirKey && dirSent && now >= nextRepeat) {
+        } else if (dirKey && dirSent && now >= nextRepeat && host::PendingKeys() == 0) {
+            // repeat only once the game has taken the last key, so movement
+            // stops when you let go
             sendDir(dirKey);
             nextRepeat = now + 120;
         }
@@ -1282,14 +1368,21 @@ int main(int argc, char** argv) {
         // ---- walking a highlight to a tapped entry ----
         if (walk.kind == 3) {
             // Step the free aim cursor one square at a time, then Target.
+            // Stops on the square: a second tap there sends Target, so a
+            // single tap never commits an attack or spell.
             const AimState& a = cx.aim;
             int cur = a.mx * 100 + a.my;
-            if (walk.steps > 60 || (!a.active && now > walk.started + 1500)) walk.kind = 0;
+            if (a.active && a.manual) walk.sawManual = true;
+            if (cur != walk.lastSeen) {
+                walk.lastSeen = cur;
+                walk.lastProgress = now;
+            }
+            if (walk.steps > 60 || !combat || now > walk.lastProgress + 1500 || (a.active && !a.manual && walk.sawManual))
+                walk.kind = 0;
             else if (a.active && a.manual) {
                 if (a.mx == walk.ax && a.my == walk.ay) {
-                    host::PushKey((uint16_t)'T');
                     walk.kind = 0;
-                } else if (now >= walk.nextStep && (cur != walk.seenAtPush || now >= walk.nextStep + 300)) {
+                } else if (host::PendingKeys() == 0 && now >= walk.nextStep && (cur != walk.seenAtPush || now >= walk.nextStep + 300)) {
                     int dx = (walk.ax > a.mx) - (walk.ax < a.mx), dy = (walk.ay > a.my) - (walk.ay < a.my);
                     uint16_t k = dy < 0 ? (dx < 0 ? keys::Home : dx > 0 ? keys::PageUp : keys::Up)
                                : dy > 0 ? (dx < 0 ? keys::End : dx > 0 ? keys::PageDown : keys::Down)
@@ -1301,13 +1394,19 @@ int main(int argc, char** argv) {
                 }
             }
         } else if (walk.kind) {
-            bool active = walk.kind == 1 ? cx.list.active : (cx.roster.shown && !cx.list.active);
+            bool active = walk.kind == 1 ? (cx.list.active && cx.list.row0 == walk.row0)
+                                         : (cx.rosterVisible && !cx.list.active && cx.roster.selected >= 0);
             int cur = walk.kind == 1 ? cx.list.hl : cx.roster.selected;
-            if (!active || walk.steps > 40) walk.kind = 0;
+            if (cur != walk.lastSeen) {
+                walk.lastSeen = cur;
+                walk.lastProgress = now;
+            }
+            int maxSteps = (walk.kind == 1 ? cx.list.rows : cx.roster.count) + 2;
+            if (!active || walk.steps > maxSteps || now > walk.lastProgress + 2000) walk.kind = 0;
             else if (cur == walk.target) {
-                if (walk.kind == 1) host::PushKey(ListActionKey(cx.items));
+                if (walk.kind == 1 && walk.thenAct) host::PushKey(ListActionKey(cx.items));
                 walk.kind = 0;
-            } else if (now >= walk.nextStep && (cur != walk.seenAtPush || now >= walk.nextStep + 300)) {
+            } else if (host::PendingKeys() == 0 && now >= walk.nextStep && (cur != walk.seenAtPush || now >= walk.nextStep + 300)) {
                 host::PushKey(cur > walk.target ? keys::Home : keys::End);
                 walk.seenAtPush = cur;
                 walk.steps++;
@@ -1320,7 +1419,7 @@ int main(int argc, char** argv) {
         if (keyboardOpen) buttons = KeyboardButtons(cx.entry == 2);
         else if (numberPad) buttons = NumberPadButtons(cx.entryMaxValue);
         else {
-            buttons = StripButtons();
+            buttons = (combat && !swapped && !cx.words.empty()) ? CombatStrip(cx) : StripButtons();
             if (swapped) {
                 auto choices = ExplorePanelWanted(cx, cx.map) ? ExploreButtons(cx) : ChoiceButtons(cx);
                 buttons.insert(buttons.end(), choices.begin(), choices.end());
@@ -1339,7 +1438,11 @@ int main(int argc, char** argv) {
                 flashUntil = now + 150;
                 if (b->listRow >= 0) {
                     if (b->listRow == cx.list.hl) k = ListActionKey(cx.items);
-                    else StartWalk(1, b->listRow, now);
+                    else {
+                        StartWalk(1, b->listRow, now);
+                        walk.row0 = cx.list.row0;
+                        walk.thenAct = ListVerbCount(cx.items) == 1;
+                    }
                 } else if (b->member >= 0) {
                     if (b->member != cx.roster.selected) StartWalk(2, b->member, now);
                 } else if (b->key == kToggleKeyboard) {
@@ -1374,7 +1477,7 @@ int main(int argc, char** argv) {
         Surface top{gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &w, &h), 400};
         Surface topR{gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, &w, &h), 400};
         Surface bottom{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &w, &h), 320};
-        int depth = (int)(osGet3DSliderState() * 3.0f + 0.5f);
+        int depth = (int)(osGet3DSliderState() * 5.0f + 0.5f);
         bool topDone = false;
 
         if (overlay) {
@@ -1388,7 +1491,7 @@ int main(int argc, char** argv) {
             }
             DrawButtons(bottom, buttons, now);
         } else if (swapped) {
-            DrawGameTop(top, topR, depth, "SELECT: game on the touch screen");
+            DrawGameTop(top, topR, (cx.state == kStateDungeon && explore3d) ? depth : 0, "SELECT: game on the touch screen");
             topDone = true;
             Fill(bottom, 0, 0, 320, 240, kDash);
             if (ExplorePanelWanted(cx, cx.map)) {
@@ -1412,6 +1515,11 @@ int main(int argc, char** argv) {
             DrawButtons(bottom, buttons, now);
         }
 
+        if (quitSince) {  // holding START+SELECT
+            Fill(bottom, 40, 90, 240, 50, kRed);
+            Text(bottom, 60, 104, "Keep holding START+SELECT", kWhite);
+            Text(bottom, 60, 120, "to quit (saves nothing)", kWhite);
+        }
         if (!topDone) std::memcpy(topR.fb, top.fb, 400 * 240 * 3);
 
         gfxFlushBuffers();

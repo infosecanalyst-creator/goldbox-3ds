@@ -81,6 +81,11 @@ bool CopyFont(uint8_t out[64][8]) {
 
 int GameStateNow() { return (int)Classes::gbl::game_state; }
 
+int PendingKeys() {
+    cs::LockGuard g(engine::seg049::keysPressedLock);
+    return engine::seg049::keysPressed.Count();
+}
+
 void PushKey(uint16_t ibmKey) { engine::seg049::AddKey(ibmKey); }
 
 void RequestQuit() { engine::seg049::RequestAbort(); }

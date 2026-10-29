@@ -316,7 +316,7 @@ void ovr025::display_hp(bool hightlighted, int y_pos, int x_pos, Player player)
 
 void ovr025::CombatDisplayPlayerSummary(Player player) /* hitpoint_ac */
 {
-    if (player != nullptr) PublishParty(player);
+    PublishParty(gbl::SelectedPlayer);  // goldbox-3ds: '>' marks whose turn it is, not the aimed target
     if (gbl::display_hitpoints_ac == true)
     {
         gbl::display_hitpoints_ac = false;

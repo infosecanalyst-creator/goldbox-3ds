@@ -34,4 +34,8 @@ bool CopyFont(uint8_t out[64][8]);
 // Safe to poll from any thread (a plain read of one int).
 int GameStateNow();
 
+// Keys queued for the engine but not read yet (host-side read of the queue;
+// the engine is unchanged). Hosts hold back new input while this is > 0.
+int PendingKeys();
+
 }  // namespace host
