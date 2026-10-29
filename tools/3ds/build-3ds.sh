@@ -24,5 +24,4 @@ echo "building in: $BUILD"
 cd "$BUILD" || exit 1
 make -f Makefile.3ds -j8 || exit 1
 cp -f goldbox.3dsx "$SRC/goldbox.3dsx"
-cp -f goldbox.elf "$SRC/goldbox.elf" 2>/dev/null  # symbols, for reading 3DS crash dumps
 echo "copied goldbox.3dsx to $SRC"

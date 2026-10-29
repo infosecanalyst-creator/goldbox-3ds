@@ -72,6 +72,11 @@ struct Path {
         if (a.empty()) return b;
         if (b.empty()) return a;
         if (b[0] == '/' || b[0] == '\\' || (b.size() > 1 && b[1] == ':')) return b;
+        // A device prefix ("sdmc:/..." on the 3DS, "C:" on Windows) also makes b absolute.
+        {
+            size_t colon = b.find(':'), slash = b.find_first_of("/\\");
+            if (colon != std::string::npos && (slash == std::string::npos || colon < slash)) return b;
+        }
         char last = a[a.Length() - 1];
         if (last == '/' || last == '\\' || last == ':') return a + b;
         return a + "/" + b;
