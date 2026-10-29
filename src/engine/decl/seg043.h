@@ -4,6 +4,10 @@
 // ---------------------------------------------------------------------------
 // seg043.cs
 // ---------------------------------------------------------------------------
+// goldbox-3ds: thrown when a key is pressed during the demo (port
+// enhancement), so the demo ends and the title menu comes back.
+struct DemoAbort {};
+
 struct seg043 {
     inline static bool in_print_and_exit = false;
     static void print_and_exit();

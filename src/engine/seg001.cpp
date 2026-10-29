@@ -1,6 +1,7 @@
 // engine/seg001.cpp - translation of coab engine/seg001.cs.
 // Original C#: coab (c) Simeon Pilgrim, BSD-3. Translation: goldbox-3ds contributors.
 #include "engine/engine.h"
+#include "platform/platform.h"
 
 namespace engine {
 
@@ -110,7 +111,10 @@ void seg001::PROGRAM()
 
     gbl::displayInputSecondsToWait = 30;
     gbl::displayInputTimeoutValue = 'D';
-    if (gbl::portEnhancements) gbl::menuSelectedWord = 0;  // goldbox-3ds: A/Enter = Play, not Demo
+    if (gbl::portEnhancements) {
+        gbl::menuSelectedWord = 0;          // goldbox-3ds: A/Enter = Play, not Demo
+        gbl::displayInputSecondsToWait = 0; // and wait for the player (no auto demo)
+    }
 
     char inputKey = ovr027::displayInput(false, 0, gbl::defaultMenuColors, "Play Demo", "Curse of the Azure Bonds v1.3 ");
 
@@ -145,7 +149,23 @@ void seg001::PROGRAM()
             ovr018::startGameMenu();
         }
 
-        ovr003::sub_29758();
+        try
+        {
+            ovr003::sub_29758();
+        }
+        catch (const DemoAbort&)
+        {
+            // goldbox-3ds: a key was pressed during the demo - tidy up as the
+            // demo's own ending does, then back to the title menu.
+            while (gbl::TeamList.Count() > 0)
+            {
+                ovr018::FreeCurrentPlayer(gbl::TeamList[0], true, true);
+            }
+            gbl::SelectedPlayer = nullptr;
+            gbl::inDemo = true;
+            ovr033::Color_0_8_normal();
+            platform::StopAllSounds();
+        }
 
         InitAgain();
 
@@ -156,7 +176,10 @@ void seg001::PROGRAM()
 
             gbl::displayInputSecondsToWait = 10;
             gbl::displayInputTimeoutValue = 'D';
-            if (gbl::portEnhancements) gbl::menuSelectedWord = 0;  // goldbox-3ds: A/Enter = Play
+            if (gbl::portEnhancements) {
+                gbl::menuSelectedWord = 0;          // goldbox-3ds: A/Enter = Play
+                gbl::displayInputSecondsToWait = 0; // no auto demo
+            }
 
             inputKey = ovr027::displayInput(false, 0, gbl::defaultMenuColors, "Play Demo", "Curse of the Azure Bonds v1.3 ");
 
