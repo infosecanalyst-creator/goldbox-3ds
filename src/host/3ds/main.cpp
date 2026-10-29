@@ -30,6 +30,7 @@
 #include <array>
 #include <map>
 #include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -926,28 +927,33 @@ void BlitGameShifted(const Surface& s, int ox, int oy, int shift) {
 // shown shifted by eye * L * maxShift source pixels, so the corridor recedes
 // into the screen; the nearest layer claiming a pixel wins.
 void BlitGameScaled(const Surface& s, int ox, int eye, float strength) {
-    int shiftL[5];
-    for (int L = 0; L < 5; L++) shiftL[L] = eye * (int)(strength * L * 1.0f + 0.5f);
+    // Disparity (source pixels, per eye) for a depth d in 0..4: at most
+    // ~2.5 px for the furthest things at full slider; walls by distance,
+    // floor and sky graded by row (near the view's edges = close, the
+    // horizon = far) so the ground doesn't look like a flat backdrop.
     bool stereo = eye != 0 && strength > 0.01f;
+    const float maxD = 2.5f * strength;
+    auto shiftFor = [&](float d) { return eye * (int)(maxD * d / 4.0f + 0.5f); };
+    const int wallShift[4] = {0, shiftFor(1.3f), shiftFor(2.3f), shiftFor(3.1f)};
     LightLock_Lock(&frameLock);
     for (int x = 0; x < 384; x++) {
         u8* col = s.fb + (size_t)(x + ox) * 240 * 3;
         int sx0 = x * 5 / 6;
         for (int y = 0; y < 240; y++) {
             int sy = y * 5 / 6, sx = sx0;
-            bool black = false;
-            if (stereo && sx0 >= 8 && sx0 < 112 && sy >= 8 && sy < 112) {
-                // inside the view window: find the nearest layer that lands here
+            if (stereo && sx0 >= 16 && sx0 < 104 && sy >= 16 && sy < 104) {
+                // inside the 3D view: the nearest layer that lands here wins
+                float dist = std::abs(sy - 60) / 44.0f;  // 0 at the horizon, 1 at the edges
+                int bgShift = shiftFor(4.0f - 3.0f * std::min(1.0f, dist));
                 int found = -1;
                 for (int L = 0; L < 5 && found < 0; L++) {
-                    int cx = sx0 - shiftL[L];
-                    if (cx >= 0 && cx < 320 && depthBuf[sy * 320 + cx] == L) found = cx;
+                    int cx = sx0 - (L < 4 ? wallShift[L] : bgShift);
+                    if (cx >= 16 && cx < 104 && depthBuf[sy * 320 + cx] == L) found = cx;
                 }
-                if (found >= 0) sx = found;
-                else black = true;
+                // a gap opened by the shift: show what is behind (the ground/sky)
+                sx = found >= 0 ? found : std::max(16, std::min(103, sx0 - bgShift));
             }
-            static const uint8_t kZero[3] = {0, 0, 0};
-            const uint8_t* c = black ? kZero : framePal + egaFrame[sy * 320 + sx] * 3;
+            const uint8_t* c = framePal + egaFrame[sy * 320 + sx] * 3;
             u8* p = col + (239 - y) * 3;
             p[0] = c[2];
             p[1] = c[1];
