@@ -682,6 +682,10 @@ std::vector<Button> ChoiceButtons(const Context& cx) {
             y += rows * 30;
         }
     }
+    if (MenuSaysContinue(cx.prompt, cx.items) && cx.hot.empty() && !cx.list.active) {
+        b.push_back({x0, 60, w, 60, keys::Enter, "CONTINUE"});
+        return b;
+    }
     // Menu words: up to 4 per row.
     if (!cx.words.empty() && y < 170) {
         int n = (int)cx.words.size(), perRow = std::min(4, n);
@@ -833,6 +837,10 @@ bool ExplorePanelWanted(const Context& cx, const MapState& m) {
 std::vector<Button> ExploreButtons(const Context& cx) {
     std::vector<Button> b;
     int x = 158, w = 158, y = 4, n = (int)cx.words.size();
+    if (MenuSaysContinue(cx.prompt, cx.items)) {  // "press <enter>/<return> to continue"
+        b.push_back({x, 4, w, 60, keys::Enter, "CONTINUE"});
+        return b;
+    }
     int h = n > 6 ? 20 : 24, gap = n > 6 ? 2 : 3;
     for (int i = 0; i < n && y + h <= 198; i++) {
         b.push_back({x, y, w, h, keys::Letter(cx.words[i].key), cx.words[i].label});
@@ -910,14 +918,39 @@ void BlitGameShifted(const Surface& s, int ox, int oy, int shift) {
     LightLock_Unlock(&frameLock);
 }
 
-void DrawGameTop(const Surface& left, const Surface& right, int depth, const char* caption) {
-    Fill(left, 0, 0, 400, 240, kBlack);
-    BlitGameShifted(left, 40, 20, -depth);
-    Text(left, (400 - TextWidth(caption)) / 2, 226, caption, kGrey);
+// The game scaled 6/5 to 384x240 (fills the top screen's height, keeps the
+// shape), with the same recessed view window for 3D.
+void BlitGameScaled(const Surface& s, int ox, int shift) {
+    LightLock_Lock(&frameLock);
+    for (int x = 0; x < 384; x++) {
+        u8* col = s.fb + (size_t)(x + ox) * 240 * 3;
+        int sx0 = x * 5 / 6;
+        for (int y = 0; y < 240; y++) {
+            int sy = y * 5 / 6, sx = sx0;
+            bool black = false;
+            if (shift && sx0 >= 16 && sx0 < 104 && sy >= 16 && sy < 104) {
+                sx = sx0 - shift;
+                black = sx < 16 || sx > 103;
+            }
+            static const uint8_t kZero[3] = {0, 0, 0};
+            const uint8_t* c = black ? kZero : framePal + egaFrame[sy * 320 + sx] * 3;
+            u8* p = col + (239 - y) * 3;
+            p[0] = c[2];
+            p[1] = c[1];
+            p[2] = c[0];
+        }
+    }
+    LightLock_Unlock(&frameLock);
+}
+
+void DrawGameTop(const Surface& left, const Surface& right, int depth, const char* /*caption*/) {
+    Fill(left, 0, 0, 8, 240, kBlack);
+    Fill(left, 392, 0, 8, 240, kBlack);
+    BlitGameScaled(left, 8, -depth);
     if (depth > 0) {
-        Fill(right, 0, 0, 400, 240, kBlack);
-        BlitGameShifted(right, 40, 20, depth);
-        Text(right, (400 - TextWidth(caption)) / 2, 226, caption, kGrey);
+        Fill(right, 0, 0, 8, 240, kBlack);
+        Fill(right, 392, 0, 8, 240, kBlack);
+        BlitGameScaled(right, 8, depth);
     } else {
         std::memcpy(right.fb, left.fb, 400 * 240 * 3);
     }
@@ -1139,6 +1172,10 @@ int main(int argc, char** argv) {
     int lastEntry = 0;
     bool quit = false;
     u64 quitSince = 0;
+    std::vector<platform::MenuItem> lastItems;
+    std::string lastPrompt;
+    bool lastAccepts = true;
+    u64 lastMenuAt = 0;
     int mapLeftVersion = -1;
     bool startUsedForCombo = false;
     bool lastCombat = false;
@@ -1167,6 +1204,19 @@ int main(int argc, char** argv) {
         LightLock_Unlock(&menuLock);
         cx.state = host::GameStateNow();
         bool combat = cx.state == kStateCombat;
+        // Between two menus (e.g. while a step in the 3D view is drawn) the
+        // game shows no menu for a moment; keep the last one on screen so
+        // the touch screen doesn't flicker.
+        if (!cx.items.empty()) {
+            lastItems = cx.items;
+            lastPrompt = cx.prompt;
+            lastAccepts = cx.acceptsDirections;
+            lastMenuAt = now;
+        } else if (now < lastMenuAt + 400 && cx.entry == 0) {
+            cx.items = lastItems;
+            cx.prompt = lastPrompt;
+            cx.acceptsDirections = lastAccepts;
+        }
         // Leaving the 3D view (wilderness, load, combat) makes the map stale
         // until the game draws the 3D view again.
         if (cx.state != kStateDungeon) mapLeftVersion = cx.map.version;
