@@ -940,6 +940,23 @@ void BlitGameScaled(const Surface& s, int ox, int shift) {
             p[2] = c[0];
         }
     }
+    // Text: scaling pixels by 6/5 makes letters uneven, so redraw every text
+    // cell the game shows with its glyph unscaled (crisp), centred in the
+    // enlarged 9.6 x 9.6 cell.
+    for (int r = 0; r < 25; r++)
+        for (int c = 0; c < 40; c++) {
+            if (!CellShows(r, c)) continue;
+            const Cell& cell = textMap[r][c];
+            const uint8_t* g = ReadableGlyph((unsigned char)cell.ch);
+            int x0 = c * 48 / 5, x1 = (c + 1) * 48 / 5, y0 = r * 48 / 5, y1 = (r + 1) * 48 / 5;
+            const uint8_t* bg = framePal + cell.bg * 3;
+            const uint8_t* fg = framePal + cell.fg * 3;
+            Fill(s, ox + x0, y0, x1 - x0, y1 - y0, RGB{bg[0], bg[1], bg[2]});
+            int gx = ox + x0 + (x1 - x0 - 8) / 2, gy = y0 + (y1 - y0 - 8) / 2;
+            for (int yy = 0; yy < 8; yy++)
+                for (int xx = 0; xx < 8; xx++)
+                    if (g[yy] & (0x80 >> xx)) Put(s, gx + xx, gy + yy, RGB{fg[0], fg[1], fg[2]});
+        }
     LightLock_Unlock(&frameLock);
 }
 
