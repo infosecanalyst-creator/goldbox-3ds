@@ -89,6 +89,36 @@ Sample samples[16];
 bool ndspOk = false;
 ndspWaveBuf waveBuf;
 
+// Button click: a short tick made at start-up, played on its own channel so
+// it never cuts off the game's sound.
+int16_t* clickPcm = nullptr;
+constexpr int kClickFrames = 330;  // 15 ms at 22050 Hz
+ndspWaveBuf clickBuf;
+
+void MakeClick() {
+    clickPcm = (int16_t*)linearAlloc(kClickFrames * 2);
+    if (!clickPcm) return;
+    u32 seed = 12345;
+    for (int i = 0; i < kClickFrames; i++) {
+        seed = seed * 1103515245u + 12345u;
+        float env = 1.0f - (float)i / kClickFrames;
+        env = env * env * env;
+        float tone = (i / 9) % 2 ? 1.0f : -1.0f;  // ~1.2 kHz square
+        float noise = (float)((int)((seed >> 16) & 0xFFFF) - 32768) / 32768.0f;
+        clickPcm[i] = (int16_t)((0.6f * tone + 0.4f * noise) * env * 9000.0f);
+    }
+    DSP_FlushDataCache(clickPcm, kClickFrames * 2);
+}
+
+void PlayClick() {
+    if (!ndspOk || !clickPcm) return;
+    ndspChnWaveBufClear(1);
+    std::memset(&clickBuf, 0, sizeof clickBuf);
+    clickBuf.data_vaddr = clickPcm;
+    clickBuf.nsamples = kClickFrames;
+    ndspChnWaveBufAdd(1, &clickBuf);
+}
+
 bool LoadWav(const char* path, Sample& out) {
     FILE* f = std::fopen(path, "rb");
     if (!f) return false;
@@ -427,6 +457,8 @@ void DrawButtons(const Surface& s, const std::vector<Button>& bs, u64 now) {
         RGB face = lit ? kBtnDown : b.selected ? RGB{90, 70, 20} : kBtn;
         Fill(s, b.x, b.y, b.w, b.h, face);
         Frame(s, b.x, b.y, b.w, b.h, b.selected ? kGold : kBtnEdge);
+        if (!lit) Fill(s, b.x + 1, b.y + b.h - 2, b.w - 2, 1, RGB{20, 30, 70});  // raised edge
+        int press = lit ? 1 : 0;  // label sinks while pressed
         std::string label = b.label;
         RGB tc = lit ? kBlack : b.selected ? kGold : kWhite;
         int maxChars = std::max(1, (b.w - 6) / 8);
@@ -440,7 +472,7 @@ void DrawButtons(const Surface& s, const std::vector<Button>& bs, u64 now) {
                 ReportCutText("button", b.label);
                 l2.resize(maxChars);
             }
-            int y = b.y + (b.h - 18) / 2;
+            int y = b.y + (b.h - 18) / 2 + press;
             Text(s, b.x + (b.w - TextWidth(l1)) / 2, y, l1, tc);
             Text(s, b.x + (b.w - TextWidth(l2)) / 2, y + 10, l2, tc);
             continue;
@@ -449,7 +481,7 @@ void DrawButtons(const Surface& s, const std::vector<Button>& bs, u64 now) {
             ReportCutText("button", b.label);
             label.resize(maxChars);
         }
-        Text(s, b.x + (b.w - TextWidth(label)) / 2, b.y + (b.h - 8) / 2, label, tc);
+        Text(s, b.x + (b.w - TextWidth(label)) / 2, b.y + (b.h - 8) / 2 + press, label, tc);
     }
 }
 
@@ -1262,6 +1294,10 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
         touchPosition t;
         hidTouchRead(&t);
         if (const Button* b = ButtonAt(buttons, t.px, t.py)) {
+            PlayClick();
+            flashKey = b->key;
+            flashRow = flashMember = -1;
+            flashUntil = now + 150;
             int page = (IsJournal(bk) ? 8 : 2) * 7;
             if (b->key == kBook) viewer.open = false;
             else if (b->key == kViewerPageUp) viewer.focus = std::max(0, viewer.focus - page);
@@ -1491,6 +1527,13 @@ int main(int argc, char** argv) {
         ndspChnSetFormat(0, NDSP_FORMAT_MONO_PCM16);
         float mix[12] = {1.0f, 1.0f};
         ndspChnSetMix(0, mix);
+        ndspChnReset(1);
+        ndspChnSetInterp(1, NDSP_INTERP_NONE);
+        ndspChnSetFormat(1, NDSP_FORMAT_MONO_PCM16);
+        ndspChnSetRate(1, 22050.0f);
+        float cmix[12] = {0.7f, 0.7f};
+        ndspChnSetMix(1, cmix);
+        MakeClick();
     }
 
     // No game data? Explain where it goes instead of exiting silently.
@@ -1882,6 +1925,7 @@ int main(int argc, char** argv) {
             const Button* b = ButtonAt(buttons, t.px, t.py);
             uint16_t k = 0;
             if (b) {
+                PlayClick();
                 flashKey = b->key;
                 flashRow = b->listRow;
                 flashMember = b->member;

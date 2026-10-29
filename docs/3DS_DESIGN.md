@@ -30,6 +30,8 @@ the Krynn and Savage Frontier games, etc.
   mentions a journal entry).
 
 ## Text and look
+- Touch buttons and keyboard keys click (short tick on its own sound channel) and
+  visibly press: they light up, the label sinks 1 px, the raised edge goes away.
 - Clear 8x8 font (Press Start 2P, OFL) instead of the game font, case kept.
 - Story text appears instantly (no per-character delay); timed message pauses
   are kept.
