@@ -113,7 +113,7 @@ int seg041::displayStringSlow(String text
     while (text_index <= text_length) {
         display_char01(text[text_index - 1], 1, 0, fgColor, gbl::textYCol, gbl::textXCol);
 
-        if (gbl::DelayBetweenCharacters) {
+        if (gbl::DelayBetweenCharacters && !gbl::portEnhancements) {  // goldbox-3ds: text appears at once
             seg049::SysDelay(gbl::game_speed_var * 3);
         }
 
