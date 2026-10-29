@@ -9,7 +9,7 @@
 typedef enum { GFX_TOP = 0, GFX_BOTTOM = 1 } gfxScreen_t;
 typedef enum { GFX_LEFT = 0, GFX_RIGHT = 1 } gfx3dSide_t;
 enum { KEY_A = 1, KEY_B = 2, KEY_SELECT = 4, KEY_START = 8, KEY_DRIGHT = 16, KEY_DLEFT = 32, KEY_DUP = 64, KEY_DDOWN = 128,
-       KEY_R = 256, KEY_L = 512, KEY_X = 1024, KEY_Y = 2048, KEY_ZL = 1 << 14, KEY_ZR = 1 << 15, KEY_TOUCH = 1 << 20,
+       KEY_R = 256, KEY_L = 512, KEY_X = 1024, KEY_Y = 2048, KEY_ZL = 1 << 14, KEY_ZR = 1 << 15, KEY_TOUCH = 1 << 20, KEY_CSTICK_RIGHT = 1 << 24, KEY_CSTICK_LEFT = 1 << 25, KEY_CSTICK_UP = 1 << 26, KEY_CSTICK_DOWN = 1 << 27,
        KEY_CPAD_RIGHT = 1 << 28, KEY_CPAD_LEFT = 1 << 29, KEY_CPAD_UP = 1 << 30, KEY_CPAD_DOWN = (int)(1u << 31) };
 typedef struct { u16 px, py; } touchPosition;
 typedef struct PrintConsole { int dummy; } PrintConsole;

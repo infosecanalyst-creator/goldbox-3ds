@@ -1,0 +1,67 @@
+# Controls
+## Quick start
+Everything can be done with the stylus or the buttons; the keyboard only opens by itself when the game wants you to type (names, riddle answers).
+
+Outside combat the game is on the top screen and the touch screen shows big buttons for whatever the game is asking. In combat the game moves to the touch screen so you can tap to aim. SELECT (or SWAP) flips the screens any time.
+
+## Buttons
+A or START: Enter (pick the highlighted choice).
+
+B: Esc (back out).
+
+X: Yes.
+
+Y: Space. While typing, Y deletes a letter.
+
+D-Pad / Circle Pad: walk and turn in the 3D view, step through menu words, move the highlight in lists, or move the gold highlight in menus such as the start menu.
+
+L / R: previous / next party member. In a list, the D-Pad moves the highlight. In combat, L and ZL move up-left and down-left, R and ZR up-right and down-right. In the Aim menu, L / R pick the previous / next target.
+
+ZL / ZR: page up / down in long lists.
+
+SELECT: swap screens.
+
+Hold START + SELECT for a second: quit.
+
+## Touch screen
+Tap a word on the game's menu line, a line in a menu, or an entry in a list to pick it. In a list with more than one action, the first tap highlights the entry and a second tap acts on it.
+
+Tap a name in the party list to select that character.
+
+In the 3D view (game on the touch screen): tap the middle of the view to walk forward, the left or right side to turn, the bottom to turn around.
+
+On "press enter" pages, tap anywhere (or the CONTINUE button) to go on.
+
+The strip at the bottom: ESC, YES, NO, ENTER, KEYS (keyboard), SWAP and BOOK (this manual).
+
+## Exploring and the automap
+While you explore, the touch screen shows an automap of the area: squares you have visited, walls (white), doors (gold) and an arrow for where you face. The map is remembered for each area.
+
+The menu words (Area, Cast, View, Encamp, Search, Look) are big buttons beside the map.
+
+## Combat
+When a fight starts the game moves to the touch screen and the top screen shows each character's HP, AC and condition; the character whose turn it is is marked with ">".
+
+The combat menu words (Move, View, Aim, Use, Cast, Turn, Quick, Done) appear as big buttons along the bottom.
+
+To attack or cast at something, tap its square once to move the aiming cursor there (the game shows the range and the target), then tap the same square again to Target it.
+
+Hold a diagonal on the D-Pad or Circle Pad to move diagonally.
+
+## Amounts, names and typing
+When the game asks "How much...", a number pad opens: ALL takes the most you can, CLEAR starts over, OK confirms, CANCEL backs out.
+
+When the game wants a name or an answer, the keyboard opens and closes by itself. Naming a character has a RANDOM button.
+
+## The journal and this book
+The game sometimes tells you to read an entry in the Adventurer's Journal. When it does, the BOOK button shows the entry number (for example J.12); tap it to open that entry.
+
+In this book: the Circle Pad or C-Stick scrolls the text (hold to keep scrolling); the D-Pad moves between the section buttons and A opens one; L / R go to the previous / next section; tap a section or a tab to open it; B or START closes the book.
+
+## 3D
+Raise the 3D slider for depth in the dungeon view: near walls just behind the frame, far walls and the horizon deeper. Slide it down for a flat picture.
+
+## Starting the game
+The title menu waits on Play; the demo only runs if you pick Demo, and any button ends it.
+
+Create characters from the start menu, add them to the party, then choose Begin Adventuring.

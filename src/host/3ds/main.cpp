@@ -27,6 +27,7 @@
 #include <3ds.h>
 
 #include <algorithm>
+#include <dirent.h>
 #include <array>
 #include <map>
 #include <cctype>
@@ -303,6 +304,7 @@ constexpr uint16_t kSwap = 0xFFFD;
 constexpr uint16_t kRandomName = 0xFFFC;
 constexpr uint16_t kNumAll = 0xFFFB;
 constexpr uint16_t kNumClear = 0xFFFA;
+constexpr uint16_t kBook = 0xFFF9;
 
 struct Button {
     int x, y, w, h;
@@ -327,7 +329,7 @@ uint16_t flashKey = 0;  // last pressed button, drawn highlighted briefly
 int flashRow = -1, flashMember = -1;
 u64 flashUntil = 0;
 
-std::vector<Button> StripButtons() {
+std::vector<Button> StripButtons(const std::string& bookLabel = "BOOK") {
     // The 40 rows under the game frame: y 200..239.
     static const struct {
         const char* label;
@@ -335,8 +337,11 @@ std::vector<Button> StripButtons() {
     } defs[] = {{"ESC", keys::Escape}, {"YES", (uint16_t)'Y'}, {"NO", (uint16_t)'N'},
                 {"ENTER", keys::Enter}, {"KEYS", kToggleKeyboard}, {"SWAP", kSwap}};
     std::vector<Button> b;
-    int n = 6, gap = 3, w = (320 - gap * (n + 1)) / n;
-    for (int i = 0; i < n; i++) b.push_back({gap + i * (w + gap), 203, w, 34, defs[i].key, defs[i].label});
+    int n = 7, gap = 2, w = (320 - gap * (n + 1)) / n;
+    for (int i = 0; i < n - 1; i++) b.push_back({gap + i * (w + gap), 203, w, 34, defs[i].key, defs[i].label});
+    Button book{gap + (n - 1) * (w + gap), 203, w, 34, kBook, bookLabel};
+    book.selected = bookLabel != "BOOK";  // gold when the game points at a journal entry
+    b.push_back(book);
     return b;
 }
 
@@ -994,6 +999,257 @@ void DrawGameTop(const Surface& left, const Surface& right, float depth, const c
 }
 
 // ---------------------------------------------------------------------------
+// The book: controls manual (romfs), journal / game manual / quick reference
+// (text files on the SD card, made from the user's own PDFs; not shipped).
+// Standard controls for all the 3DS ports: Circle Pad / C-Stick scroll the
+// text (hold to repeat), D-Pad moves between section buttons (A opens),
+// L/R previous/next section, tap a tab or section, B or START closes.
+// ---------------------------------------------------------------------------
+struct BookSection {
+    std::string title;
+    std::vector<std::string> lines;  // wrapped to the top screen
+};
+struct Book {
+    std::string title;
+    std::vector<BookSection> sections;
+};
+std::vector<Book> books;
+
+struct Viewer {
+    bool open = false;
+    int book = 0, section = 0, scroll = 0, focus = 0;
+    u64 nextScroll = 0, nextFocus = 0;
+} viewer;
+
+constexpr int kWrap = 48, kTextRows = 23;
+
+void WrapInto(std::vector<std::string>& out, const std::string& para) {
+    std::string line;
+    size_t i = 0;
+    while (i < para.size()) {
+        size_t j = para.find(' ', i);
+        if (j == std::string::npos) j = para.size();
+        std::string word = para.substr(i, j - i);
+        while (word.size() > (size_t)kWrap) {  // very long token
+            if (!line.empty()) { out.push_back(line); line.clear(); }
+            out.push_back(word.substr(0, kWrap));
+            word = word.substr(kWrap);
+        }
+        if (!line.empty() && line.size() + 1 + word.size() > (size_t)kWrap) {
+            out.push_back(line);
+            line.clear();
+        }
+        if (!word.empty()) line += (line.empty() ? "" : " ") + word;
+        i = j + 1;
+    }
+    if (!line.empty()) out.push_back(line);
+}
+
+void LoadBookFile(const std::string& path) {
+    FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return;
+    Book b;
+    std::string para, line;
+    auto flush = [&]() {
+        if (!para.empty() && !b.sections.empty()) {
+            WrapInto(b.sections.back().lines, para);
+            b.sections.back().lines.push_back("");
+        }
+        para.clear();
+    };
+    char buf[1024];
+    while (std::fgets(buf, sizeof buf, f)) {
+        line = buf;
+        while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) line.pop_back();
+        if (line.rfind("## ", 0) == 0) {
+            flush();
+            b.sections.push_back({line.substr(3), {}});
+        } else if (line.rfind("# ", 0) == 0) {
+            flush();
+            b.title = line.substr(2);
+        } else if (line.empty()) {
+            flush();
+        } else {
+            para += (para.empty() ? "" : " ") + line;
+        }
+    }
+    flush();
+    std::fclose(f);
+    if (b.title.empty()) b.title = "Book";
+    if (!b.sections.empty()) books.push_back(b);
+}
+
+void LoadBooks() {
+    books.clear();
+    for (const char* dir : {"romfs:/manual", "sdmc:/3ds/goldbox/manual"}) {
+        std::vector<std::string> names;
+        if (DIR* d = opendir(dir)) {
+            while (dirent* e = readdir(d)) {
+                std::string n = e->d_name;
+                if (n.size() > 4 && n.substr(n.size() - 4) == ".txt") names.push_back(n);
+            }
+            closedir(d);
+        }
+        std::sort(names.begin(), names.end());
+        for (auto& n : names) LoadBookFile(std::string(dir) + "/" + n);
+    }
+}
+
+bool IsJournal(const Book& b) { return b.title == "Journal"; }
+
+// Short label for a section button ("Entry 12" -> "12" in the journal).
+std::string SectionLabel(const Book& b, const BookSection& s) {
+    if (IsJournal(b) && s.title.rfind("Entry ", 0) == 0) return s.title.substr(6);
+    if (IsJournal(b)) return "Notes";
+    return s.title;
+}
+
+void OpenViewerAtEntry(int entry) {
+    viewer.open = true;
+    viewer.scroll = 0;
+    if (entry > 0)
+        for (size_t bi = 0; bi < books.size(); bi++)
+            if (IsJournal(books[bi]))
+                for (size_t si = 0; si < books[bi].sections.size(); si++)
+                    if (books[bi].sections[si].title == "Entry " + std::to_string(entry)) {
+                        viewer.book = (int)bi;
+                        viewer.section = viewer.focus = (int)si;
+                        return;
+                    }
+    if (viewer.book >= (int)books.size()) viewer.book = 0;
+}
+
+// Section buttons for the current book: a grid of numbers for the journal,
+// two columns of titles otherwise. Scrolls to keep the focus in view.
+std::vector<Button> ViewerButtons() {
+    std::vector<Button> b;
+    // Tabs
+    int nb = (int)books.size() + 1, gap = 2, tw = (320 - gap * (nb + 1)) / nb;
+    for (int i = 0; i < (int)books.size(); i++) {
+        Button t{gap + i * (tw + gap), 2, tw, 24, (uint16_t)(0xF000 + i), books[i].title};
+        t.selected = i == viewer.book;
+        b.push_back(t);
+    }
+    b.push_back({gap + (nb - 1) * (tw + gap), 2, tw, 24, kBook, "CLOSE"});
+    if (books.empty()) return b;
+    const Book& bk = books[viewer.book];
+    int n = (int)bk.sections.size();
+    bool grid = IsJournal(bk);
+    int cols = grid ? 8 : 2, bw = grid ? 37 : 156, bh = grid ? 24 : 22, rowsVisible = grid ? 8 : 9;
+    int focusRow = viewer.focus / cols, firstRow = std::max(0, focusRow - rowsVisible / 2);
+    int totalRows = (n + cols - 1) / cols;
+    firstRow = std::max(0, std::min(firstRow, totalRows - rowsVisible));
+    for (int i = firstRow * cols; i < n && i < (firstRow + rowsVisible) * cols; i++) {
+        int r = i / cols - firstRow, c = i % cols;
+        Button sb{4 + c * (bw + 2), 30 + r * (bh + 2), bw, bh, (uint16_t)(0xE000 + i), SectionLabel(bk, bk.sections[i])};
+        sb.selected = i == viewer.section;
+        b.push_back(sb);
+    }
+    return b;
+}
+
+void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface& topR, const Surface& bottom) {
+    if (books.empty()) LoadBooks();
+    if (books.empty()) {
+        viewer.open = false;
+        return;
+    }
+    viewer.book = std::max(0, std::min(viewer.book, (int)books.size() - 1));
+    Book& bk = books[viewer.book];
+    int n = (int)bk.sections.size();
+    viewer.section = std::max(0, std::min(viewer.section, n - 1));
+    viewer.focus = std::max(0, std::min(viewer.focus, n - 1));
+    auto openSection = [&](int i) {
+        viewer.section = viewer.focus = std::max(0, std::min(i, n - 1));
+        viewer.scroll = 0;
+    };
+    if (down & (KEY_B | KEY_START)) viewer.open = false;
+    if (down & KEY_L) openSection(viewer.section - 1);
+    if (down & KEY_R) openSection(viewer.section + 1);
+    if (down & KEY_A) openSection(viewer.focus);
+    // D-Pad: move the focus between section buttons (repeat when held).
+    int cols = IsJournal(bk) ? 8 : 2, df = 0;
+    if (held & KEY_DUP) df = -cols;
+    else if (held & KEY_DDOWN) df = cols;
+    else if (held & KEY_DLEFT) df = -1;
+    else if (held & KEY_DRIGHT) df = 1;
+    if (df && ((down & (KEY_DUP | KEY_DDOWN | KEY_DLEFT | KEY_DRIGHT)) || now >= viewer.nextFocus)) {
+        viewer.focus = std::max(0, std::min(viewer.focus + df, n - 1));
+        viewer.nextFocus = now + ((down & (KEY_DUP | KEY_DDOWN | KEY_DLEFT | KEY_DRIGHT)) ? 350 : 110);
+    }
+    // Circle Pad / C-Stick: scroll the text (repeat when held).
+    const BookSection& sec = bk.sections[viewer.section];
+    int maxScroll = std::max(0, (int)sec.lines.size() - kTextRows);
+    int ds = 0;
+    if (held & (KEY_CPAD_UP | KEY_CSTICK_UP)) ds = -1;
+    else if (held & (KEY_CPAD_DOWN | KEY_CSTICK_DOWN)) ds = 1;
+    if (ds && now >= viewer.nextScroll) {
+        viewer.scroll = std::max(0, std::min(viewer.scroll + ds, maxScroll));
+        viewer.nextScroll = now + 60;
+    }
+
+    std::vector<Button> buttons = ViewerButtons();
+    if (down & KEY_TOUCH) {
+        touchPosition t;
+        hidTouchRead(&t);
+        if (const Button* b = ButtonAt(buttons, t.px, t.py)) {
+            if (b->key == kBook) viewer.open = false;
+            else if (b->key >= 0xF000) {
+                viewer.book = b->key - 0xF000;
+                viewer.section = viewer.focus = viewer.scroll = 0;
+            } else if (b->key >= 0xE000) openSection(b->key - 0xE000);
+        }
+    }
+
+    // Top: the text
+    const Book& bk2 = books[viewer.book];
+    const BookSection& s2 = bk2.sections[std::min(viewer.section, (int)bk2.sections.size() - 1)];
+    int maxS2 = std::max(0, (int)s2.lines.size() - kTextRows);
+    viewer.scroll = std::min(viewer.scroll, maxS2);
+    Fill(top, 0, 0, 400, 240, RGB{14, 12, 6});
+    Text(top, 8, 4, bk2.title + "  -  " + s2.title.substr(0, 34), kGold);
+    Fill(top, 8, 14, 384, 1, RGB{120, 100, 40});
+    for (int i = 0; i < kTextRows && viewer.scroll + i < (int)s2.lines.size(); i++)
+        Text(top, 8, 19 + i * 9, s2.lines[viewer.scroll + i], RGB{235, 225, 200});
+    if (maxS2 > 0) {  // scroll bar
+        int h = std::max(10, 210 * kTextRows / (int)s2.lines.size());
+        int y = 19 + (210 - h) * viewer.scroll / maxS2;
+        Fill(top, 395, 19, 3, 210, RGB{50, 44, 30});
+        Fill(top, 395, y, 3, h, kGold);
+    }
+    std::memcpy(topR.fb, top.fb, 400 * 240 * 3);
+
+    // Bottom: tabs, section buttons, focus, help
+    Fill(bottom, 0, 0, 320, 240, kDash);
+    DrawButtons(bottom, buttons, now);
+    for (auto& b : buttons)
+        if (b.key == 0xE000 + viewer.focus) Frame(bottom, b.x - 2, b.y - 2, b.w + 4, b.h + 4, kWhite);
+    Text(bottom, 4, 218, "Pad/C-Stick scroll  D-Pad+A pick  L/R prev/next", kGrey);
+    Text(bottom, 4, 229, "Tap a section     B or START close", kGrey);
+}
+
+// "...READ JOURNAL ENTRY 12..." on the game screen: the entry number, or 0.
+int DetectJournalEntry() {
+    bool journal = false;
+    int entry = 0;
+    for (int r = 0; r < 25; r++) {
+        std::string t = RowText(r, 0, 39);
+        for (auto& ch : t) ch = (char)std::toupper((unsigned char)ch);
+        if (t.find("JOURNAL") != std::string::npos) journal = true;
+        size_t p = t.find("ENTRY");
+        while (p != std::string::npos) {
+            size_t q = p + 5;
+            while (q < t.size() && t[q] == ' ') q++;
+            int v = 0, digits = 0;
+            while (q < t.size() && std::isdigit((unsigned char)t[q]) && digits < 3) v = v * 10 + (t[q++] - '0'), digits++;
+            if (digits) entry = v;
+            p = t.find("ENTRY", p + 5);
+        }
+    }
+    return journal ? entry : 0;
+}
+
+// ---------------------------------------------------------------------------
 // Random names for new characters (Forgotten Realms flavour).
 // ---------------------------------------------------------------------------
 const char* const kNames[] = {"Aldric", "Brenna", "Corwin", "Dagny", "Elric", "Fenna", "Gareth", "Hilde",
@@ -1214,6 +1470,8 @@ int main(int argc, char** argv) {
     u64 dirSince = 0;
     int lastEntry = 0;
     bool quit = false;
+    int journalEntry = 0;
+    u64 journalSeenAt = 0;
     u64 quitSince = 0;
     std::vector<platform::MenuItem> lastItems;
     std::string lastPrompt;
@@ -1341,6 +1599,28 @@ int main(int argc, char** argv) {
         bool explore3d = false;
         if (cx.state == kStateDungeon)
             for (auto& it : cx.items) explore3d |= it.label == "Area";
+
+        // The book takes over both screens and all input while open.
+        if (viewer.open) {
+            u16 vw, vh;
+            Surface vtop{gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &vw, &vh), 400};
+            Surface vtopR{gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, &vw, &vh), 400};
+            Surface vbottom{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &vw, &vh), 320};
+            ViewerFrame(down, held, now, vtop, vtopR, vbottom);
+            gfxFlushBuffers();
+            gfxSwapBuffers();
+            gspWaitForVBlank();
+            continue;
+        }
+        if (!overlay) {
+            int e = DetectJournalEntry();
+            if (e > 0) {
+                journalEntry = e;
+                journalSeenAt = now;
+            } else if (journalEntry && now > journalSeenAt + 120000) {
+                journalEntry = 0;  // the hint fades two minutes after the text is gone
+            }
+        }
 
         // ---- buttons ----
         // Quit: hold START+SELECT for a second (a warning shows meanwhile).
@@ -1512,7 +1792,9 @@ int main(int argc, char** argv) {
         if (keyboardOpen) buttons = KeyboardButtons(cx.entry == 2);
         else if (numberPad) buttons = NumberPadButtons(cx.entryMaxValue);
         else {
-            buttons = (combat && !swapped && !cx.words.empty()) ? CombatStrip(cx) : StripButtons();
+            buttons = (combat && !swapped && !cx.words.empty())
+                          ? CombatStrip(cx)
+                          : StripButtons(journalEntry ? "J." + std::to_string(journalEntry) : std::string("BOOK"));
             if (swapped) {
                 auto choices = ExplorePanelWanted(cx, cx.map) ? ExploreButtons(cx) : ChoiceButtons(cx);
                 buttons.insert(buttons.end(), choices.begin(), choices.end());
@@ -1541,6 +1823,8 @@ int main(int argc, char** argv) {
                 } else if (b->key == kToggleKeyboard) {
                     keyboardOpen = !keyboardOpen;
                     keyboardAuto = false;
+                } else if (b->key == kBook) {
+                    OpenViewerAtEntry(journalEntry);
                 } else if (b->key == kKbPage) {
                     keyboardPage ^= 1;
                 } else if (b->key == kSwap) {

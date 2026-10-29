@@ -70,6 +70,8 @@ all: romfs $(BUILD)
 romfs:
 	@mkdir -p $(ROMFS)/sounds
 	@cp assets/sounds/*.wav $(ROMFS)/sounds/
+	@mkdir -p $(ROMFS)/manual
+	@cp assets/manual/*.txt $(ROMFS)/manual/
 
 $(BUILD):
 	@mkdir -p $@
