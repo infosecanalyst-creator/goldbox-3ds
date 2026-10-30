@@ -30,7 +30,7 @@ the Krynn and Savage Frontier games, etc.
   mentions a journal entry).
 
 ## Text and look
-- Touch buttons and keyboard keys click (short tick on its own sound channel) and
+- Touch buttons and keyboard keys click (a very subtle, quiet tick on its own channel) and
   visibly press: they light up, the label sinks 1 px, the raised edge goes away.
 - Clear 8x8 font (Press Start 2P, OFL) instead of the game font, case kept.
 - Story text appears instantly (no per-character delay); timed message pauses
@@ -49,7 +49,8 @@ the Krynn and Savage Frontier games, etc.
 - Hold START + SELECT for a second to quit.
 
 ## Text must fit (checked on every build)
-- No text may be cut off: buttons, tabs, headers, help lines, dashboards.
+- No text may be cut off or split mid-word: buttons, tabs, headers, help lines,
+  dashboards. A word a little too wide for its button is drawn condensed (7 px).
   Labels wrap to two lines on buttons 19+ px tall; tabs use short names; help
   lines stay within 39 characters on the bottom screen (48 on the top, 8x8 font).
 - The host logs any text that runs off a screen or any label it had to shorten

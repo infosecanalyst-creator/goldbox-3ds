@@ -92,7 +92,7 @@ ndspWaveBuf waveBuf;
 // Button click: a short tick made at start-up, played on its own channel so
 // it never cuts off the game's sound.
 int16_t* clickPcm = nullptr;
-constexpr int kClickFrames = 330;  // 15 ms at 22050 Hz
+constexpr int kClickFrames = 176;  // 8 ms at 22050 Hz
 ndspWaveBuf clickBuf;
 
 void MakeClick() {
@@ -103,9 +103,9 @@ void MakeClick() {
         seed = seed * 1103515245u + 12345u;
         float env = 1.0f - (float)i / kClickFrames;
         env = env * env * env;
-        float tone = (i / 9) % 2 ? 1.0f : -1.0f;  // ~1.2 kHz square
+        float tone = std::sin(i * 2.0f * 3.14159265f * 2200.0f / 22050.0f);  // soft 2.2 kHz tick
         float noise = (float)((int)((seed >> 16) & 0xFFFF) - 32768) / 32768.0f;
-        clickPcm[i] = (int16_t)((0.6f * tone + 0.4f * noise) * env * 9000.0f);
+        clickPcm[i] = (int16_t)((0.8f * tone + 0.2f * noise) * env * 1400.0f);  // very quiet
     }
     DSP_FlushDataCache(clickPcm, kClickFrames * 2);
 }
@@ -250,6 +250,15 @@ void Text(const Surface& s, int x, int y, const std::string& str, RGB c, int sca
 }
 
 int TextWidth(const std::string& str, int scale = 1) { return (int)str.size() * 8 * scale; }
+
+// Condensed: 7 px per letter (the font's right column is blank), for a word
+// that is a little too wide for its button. Words are never split.
+void TextNarrow(const Surface& s, int x, int y, const std::string& str, RGB c) {
+    for (char ch : str) {
+        Text(s, x, y, std::string(1, ch), c);
+        x += 7;
+    }
+}
 
 // Text in a box maxW pixels wide: large (scale 2) when it fits, otherwise
 // normal size; only if even that is too long is it shortened (and logged).
@@ -461,11 +470,16 @@ void DrawButtons(const Surface& s, const std::vector<Button>& bs, u64 now) {
         int press = lit ? 1 : 0;  // label sinks while pressed
         std::string label = b.label;
         RGB tc = lit ? kBlack : b.selected ? kGold : kWhite;
-        int maxChars = std::max(1, (b.w - 6) / 8);
-        if ((int)label.size() > maxChars && b.h >= 19) {
+        int maxChars = std::max(1, (b.w - 4) / 8);
+        if ((int)label.size() > maxChars && (int)label.size() * 7 <= b.w - 2 && label.find(' ') == std::string::npos) {
+            int w7 = (int)label.size() * 7 - 1;
+            TextNarrow(s, b.x + (b.w - w7) / 2, b.y + (b.h - 8) / 2 + press, label, tc);
+            continue;
+        }
+        if ((int)label.size() > maxChars && b.h >= 19 && label.find(' ') != std::string::npos) {
             // Two lines, broken at a space where possible.
             size_t cut = label.rfind(' ', maxChars);
-            if (cut == std::string::npos || cut == 0) cut = maxChars;
+            if (cut == std::string::npos || cut == 0) cut = label.find(' ');  // never split a word
             std::string l1 = label.substr(0, cut), l2 = label.substr(cut);
             while (!l2.empty() && l2[0] == ' ') l2.erase(0, 1);
             if ((int)l2.size() > maxChars) {
@@ -1531,7 +1545,7 @@ int main(int argc, char** argv) {
         ndspChnSetInterp(1, NDSP_INTERP_NONE);
         ndspChnSetFormat(1, NDSP_FORMAT_MONO_PCM16);
         ndspChnSetRate(1, 22050.0f);
-        float cmix[12] = {0.7f, 0.7f};
+        float cmix[12] = {0.5f, 0.5f};
         ndspChnSetMix(1, cmix);
         MakeClick();
     }
