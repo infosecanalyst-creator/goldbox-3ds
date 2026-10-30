@@ -1,6 +1,6 @@
 # 3DS design decisions (apply to every Gold Box game)
 
-Agreed while building Curse of the Azure Bonds (Oct 2026). Reuse all
+Settled while building the Curse of the Azure Bonds profile (Oct 2026). Reuse all
 of this for Pool of Radiance, Secret of the Silver Blades, Pools of Darkness,
 the Krynn and Savage Frontier games, etc.
 
@@ -68,7 +68,7 @@ the Krynn and Savage Frontier games, etc.
   user's own journal / manual / quick reference, made by OCR from their PDFs into
   `sdmc:/3ds/goldbox/manual/*.txt` (`# Book`, `## Section`, paragraphs). The
   publisher's text is never committed to the repo.
-- Standard controls across all of the 3DS ports: Circle Pad / C-Stick scroll the
+- Standard controls across all of these 3DS ports: Circle Pad / C-Stick scroll the
   text (hold to repeat; the game ignores them while reading); the D-Pad moves
   between the section buttons on the touch screen (A opens; the D-Pad does not
   scroll); L / R previous / next section; tap a tab or section; B or START closes.

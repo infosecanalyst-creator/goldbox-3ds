@@ -17,3 +17,5 @@ build-romfs/
 tools/3ds/*.log
 tools/3ds/*.status
 !assets/**/*.png
+# Sound samples are not shipped - bring your own copy.
+*.wav

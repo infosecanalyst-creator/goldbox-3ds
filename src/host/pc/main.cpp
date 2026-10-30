@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
     audioDev = SDL_OpenAudioDevice(nullptr, 0, &want, &audioSpec, 0);
     if (audioDev) SDL_PauseAudioDevice(audioDev, 0);
 
-    SDL_Window* win = SDL_CreateWindow("Curse of the Azure Bonds - goldbox", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    SDL_Window* win = SDL_CreateWindow("Gold Box 3DS (desktop)", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                        320 * scale, 200 * scale, SDL_WINDOW_RESIZABLE);
     SDL_Renderer* ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_PRESENTVSYNC);
     SDL_RenderSetLogicalSize(ren, 320, 200);

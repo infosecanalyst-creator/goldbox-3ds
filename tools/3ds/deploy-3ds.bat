@@ -2,11 +2,13 @@
 rem Installs goldbox-3ds on the 3DS over Wi-Fi (ftpd must be running on the 3DS).
 rem  - goldbox.3dsx            -> sdmc:/3ds/goldbox/goldbox.3dsx
 rem  - game data (first time)  -> sdmc:/3ds/goldbox/cotab/
-rem Usage: deploy-3ds.bat [3ds-ip] [ftp-port]
+rem  - sounds (optional)       -> sdmc:/3ds/goldbox/sounds/
+rem Usage: deploy-3ds.bat <3ds-ip> [ftp-port]  (or set GOLDBOX_3DS_IP)
 setlocal enabledelayedexpansion
 cd /d "%~dp0..\.."
 set "IP=%~1"
-if "%IP%"=="" set "IP=3DS-IP"
+if "%IP%"=="" set "IP=%GOLDBOX_3DS_IP%"
+if "%IP%"=="" (echo Usage: deploy-3ds.bat ^<3ds-ip^> [ftp-port]  ^(or set GOLDBOX_3DS_IP^) & exit /b 1)
 set "PORT=%~2"
 if "%PORT%"=="" set "PORT=5000"
 set "DATA=%~dp0..\..\..\data\cotab"
@@ -25,7 +27,14 @@ if errorlevel 1 (
     )
   )
 )
-echo Done. Launch "Curse of the Azure Bonds" from the Homebrew Launcher.
+rem Optional: your own copy of the sound samples (*.wav) from ..\data\sounds
+if exist "%~dp0..\..\..\data\sounds\*.wav" (
+  echo Uploading sound samples ...
+  for %%F in ("%~dp0..\..\..\data\sounds\*.wav") do (
+    curl -s --ftp-create-dirs -T "%%~fF" "ftp://%IP%:%PORT%/3ds/goldbox/sounds/%%~nxF" || goto :ftpfail
+  )
+)
+echo Done. Launch "Gold Box 3DS" from the Homebrew Launcher.
 exit /b 0
 
 :ftpfail

@@ -22,7 +22,8 @@
 //           hold START+SELECT = quit.
 //
 // Data: put the game's files (*.DAX, ITEMS, ...) in sdmc:/3ds/goldbox/cotab/
-// Saves and logs go to sdmc:/3ds/goldbox/user/.
+// Saves and logs go to sdmc:/3ds/goldbox/user/. Optional sound samples (your
+// own copy, *.wav) go in sdmc:/3ds/goldbox/sounds/; without them it is silent.
 // Copyright (c) 2026, the goldbox-3ds contributors. BSD 3-clause (see LICENSE).
 #include <3ds.h>
 
@@ -817,7 +818,7 @@ std::vector<Button> ChoiceButtons(const Context& cx) {
 // ---------------------------------------------------------------------------
 void DrawDashboard(const Surface& top, const Context& cx) {
     Fill(top, 0, 0, 400, 240, kDash);
-    Text(top, (400 - TextWidth("Curse of the Azure Bonds", 2)) / 2, 6, "Curse of the Azure Bonds", kGold, 2);
+    Text(top, (400 - TextWidth("Gold Box 3DS", 2)) / 2, 6, "Gold Box 3DS", kGold, 2);
     Fill(top, 16, 26, 368, 1, kBtnEdge);
 
     int y = 32;
@@ -1103,7 +1104,7 @@ void DrawGameTop(const Surface& left, const Surface& right, float depth, const c
 // ---------------------------------------------------------------------------
 // The book: controls manual (romfs), journal / game manual / quick reference
 // (text files on the SD card, made from the user's own PDFs; not shipped).
-// Standard controls for all the 3DS ports: Circle Pad / C-Stick scroll the
+// Standard controls shared by all of these 3DS ports: Circle Pad / C-Stick scroll the
 // text (hold to repeat), D-Pad moves between section buttons (A opens),
 // L/R previous/next section, tap a tab or section, B or START closes.
 // ---------------------------------------------------------------------------
@@ -1414,7 +1415,9 @@ void PresentFrame(const int* ega, const uint8_t* palette) {
 
 void LoadSound(int id, const char* name) {
     if (id < 0 || id >= 16 || !ndspOk) return;
-    std::string path = std::string("romfs:/sounds/") + name + ".wav";
+    // Optional: the player's own copy of the sound samples. No sounds are
+    // shipped; a missing file just leaves that sound silent.
+    std::string path = std::string("sdmc:/3ds/goldbox/sounds/") + name + ".wav";
     LoadWav(path.c_str(), samples[id]);
 }
 

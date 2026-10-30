@@ -43,6 +43,4 @@ if(GOLDBOX_PC)
         target_include_directories(goldbox PRIVATE ${SDL2_INCLUDE_DIRS})
         target_link_libraries(goldbox PRIVATE goldbox_core ${SDL2_LIBRARIES})
     endif()
-    add_custom_command(TARGET goldbox POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/assets/sounds $<TARGET_FILE_DIR:goldbox>/sounds)
 endif()

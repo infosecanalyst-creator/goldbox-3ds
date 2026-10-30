@@ -21,9 +21,9 @@ INCLUDES    := src
 GRAPHICS    :=
 ROMFS       := build-romfs
 
-APP_TITLE       := Curse of the Azure Bonds
-APP_DESCRIPTION := goldbox-3ds: native Gold Box engine
-APP_AUTHOR      := goldbox-3ds (coab port)
+APP_TITLE       := Gold Box 3DS
+APP_DESCRIPTION := Plays your own SSI Gold Box files
+APP_AUTHOR      := goldbox-3ds contributors
 ICON            := assets/3ds/icon.png
 
 #---------------------------------------------------------------------------------
@@ -68,8 +68,6 @@ all: romfs $(BUILD)
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.3ds
 
 romfs:
-	@mkdir -p $(ROMFS)/sounds
-	@cp assets/sounds/*.wav $(ROMFS)/sounds/
 	@mkdir -p $(ROMFS)/manual
 	@cp assets/manual/*.txt $(ROMFS)/manual/
 
