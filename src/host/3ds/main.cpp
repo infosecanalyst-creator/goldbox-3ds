@@ -17,8 +17,9 @@
 // Controls: D-pad / Circle Pad = move (8 ways in combat), or move the
 //           highlight in menus and lists; A/START = Enter; B = Esc; X = Yes;
 //           Y = Space (Backspace while typing); L/R = previous/next party
-//           member (combat: diagonals with ZL/ZR; "Aim:" previous/next
-//           target); ZL/ZR = page up/down in lists; SELECT = swap screens;
+//           member (combat: diagonals with L/R and the C-Stick; "Aim:" previous/next
+//           target); C-Stick up/down, ZR = page up/down in lists; ZL or
+//           SELECT = swap screens;
 //           hold START+SELECT = quit.
 //
 // Data: put the game's files (*.DAX, ITEMS, ...) in sdmc:/3ds/goldbox/cotab/
@@ -890,7 +891,7 @@ void DrawDashboard(const Surface& top, const Context& cx) {
     Fill(top, 16, 190, 368, 1, kBtnEdge);
     Text(top, 16, 196, "Tap a choice on the game screen to pick it", kGrey);
     Text(top, 16, 208, "D-pad move/choose  A Enter  B Esc  X Yes", kGrey);
-    Text(top, 16, 220, "L/R party member  ZL/ZR page  SELECT swap", kGrey);
+    Text(top, 16, 220, "L/R party  ZR/C-Stick page  ZL swap", kGrey);
     if (!ndspOk) Text(top, 16, 180, "No sound: run DSP1 once (dspfirm.cdc)", kRed);
 }
 
@@ -999,7 +1000,7 @@ void DrawCombatPanel(const Surface& top, const std::vector<platform::PartyMember
     Fill(top, 16, 190, 368, 1, RGB{160, 60, 60});
     Text(top, 16, 196, "Tap a square to aim, a word to act", kGrey);
     Text(top, 16, 208, "D-pad/Circle Pad move (diagonals OK)", kGrey);
-    Text(top, 16, 220, "L/ZL R/ZR diagonals   SELECT swap", kGrey);
+    Text(top, 16, 220, "Diagonals: L R up, C-Stick down  ZL swap", kGrey);
 }
 
 // ---------------------------------------------------------------------------
@@ -1766,7 +1767,7 @@ int main(int argc, char** argv) {
         } else {
             quitSince = 0;
         }
-        if ((down & KEY_SELECT) && !(held & KEY_START)) {
+        if (((down & KEY_SELECT) && !(held & KEY_START)) || (down & KEY_ZL)) {   // SELECT or ZL
             userFlip = !userFlip;
             swapped = !swapped;
         }
@@ -1789,7 +1790,8 @@ int main(int argc, char** argv) {
         } else if (combat) {
             // Shoulders = diagonals: left shoulders go left, right go right.
             if (down & KEY_L) host::PushKey(keys::Home);
-            if (down & KEY_ZL) host::PushKey(keys::End);
+            if (!overlay && (down & KEY_CSTICK_LEFT)) host::PushKey(keys::End);   // down-left
+            if (!overlay && (down & KEY_CSTICK_RIGHT)) host::PushKey(keys::PageDown);   // down-right
             if (down & KEY_R) host::PushKey(keys::PageUp);
             if (down & KEY_ZR) host::PushKey(keys::PageDown);
         } else {
@@ -1797,7 +1799,8 @@ int main(int argc, char** argv) {
             // page through long lists.
             if (down & KEY_L) host::PushKey(keys::Home);
             if (down & KEY_R) host::PushKey(keys::End);
-            if (down & KEY_ZL) host::PushKey(keys::PageUp);
+            if (!overlay && (down & KEY_CSTICK_UP)) host::PushKey(keys::PageUp);
+            if (!overlay && (down & KEY_CSTICK_DOWN)) host::PushKey(keys::PageDown);
             if (down & KEY_ZR) host::PushKey(keys::PageDown);
         }
 

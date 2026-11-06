@@ -2,7 +2,7 @@
 ## Quick start
 Everything can be done with the stylus or the buttons; the keyboard only opens by itself when the game wants you to type (names, riddle answers).
 
-Outside combat the game is on the top screen and the touch screen shows big buttons for whatever the game is asking. In combat the game moves to the touch screen so you can tap to aim. SELECT (or SWAP) flips the screens any time.
+Outside combat the game is on the top screen and the touch screen shows big buttons for whatever the game is asking. In combat the game moves to the touch screen so you can tap to aim. ZL (or SELECT, or SWAP) flips the screens any time.
 
 ## Buttons
 A or START: Enter (pick the highlighted choice).
@@ -15,11 +15,11 @@ Y: Space. While typing, Y deletes a letter.
 
 D-Pad / Circle Pad: walk and turn in the 3D view, step through menu words, move the highlight in lists, or move the gold highlight in menus such as the start menu.
 
-L / R: previous / next party member. In a list, the D-Pad moves the highlight. In combat, L and ZL move up-left and down-left, R and ZR up-right and down-right. In the Aim menu, L / R pick the previous / next target.
+L / R: previous / next party member. In a list, the D-Pad moves the highlight. In combat, L and R move up-left and up-right; the C-Stick left and right move down-left and down-right (ZR also moves down-right). In the Aim menu, L / R pick the previous / next target.
 
-ZL / ZR: page up / down in long lists.
+C-Stick up / down (or ZR for down): page up / down in long lists.
 
-SELECT: swap screens.
+ZL: swap screens, any time. SELECT does the same.
 
 Hold START + SELECT for a second: quit.
 
