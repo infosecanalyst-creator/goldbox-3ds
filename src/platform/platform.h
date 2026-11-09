@@ -45,9 +45,13 @@ struct MenuItem {
     char key;
     int col = 0;
     int width = 0;
+    int index = 0;  // the word's number in the engine's menu (see MenuHighlight)
 };
 void MenuShow(const std::string& prompt, const std::vector<MenuItem>& items, bool acceptsDirections);
 void MenuHide();
+// The menu word the game highlights (Enter picks it; ',' / '.' move it),
+// as MenuItem::index. Display-only, so a host can ring the matching button.
+void MenuHighlight(int index);
 
 // Scrolling lists (race, class, items, spells ...): published while the list
 // waits for input so a touch host can map a tap to a row. Rows are text rows

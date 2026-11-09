@@ -18,9 +18,11 @@
 //           highlight in menus and lists; A/START = Enter; B = Esc; X = Yes;
 //           Y = Space (Backspace while typing); L/R = previous/next party
 //           member (combat: diagonals with L/R and the C-Stick; "Aim:" previous/next
-//           target); C-Stick up/down, ZR = page up/down in lists; ZL or
-//           SELECT = swap screens;
-//           hold START+SELECT = quit.
+//           target); C-Stick up/down = page up/down in lists; ZL or
+//           SELECT = swap screens; ZR = the D-pad drives the touch buttons
+//           (gold ring, A presses); hold START+SELECT = quit.
+// Top screen: 800x240 wide mode with the 3D slider down (crisper), the two
+// 3D eyes with it up. The game on top always fills the whole screen.
 //
 // Data: put the game's files (*.DAX, ITEMS, ...) in sdmc:/3ds/goldbox/cotab/
 // Saves and logs go to sdmc:/3ds/goldbox/user/. Optional sound samples (your
@@ -183,23 +185,36 @@ constexpr RGB kBtn{40, 56, 120};       // button face
 constexpr RGB kBtnEdge{120, 150, 230};
 constexpr RGB kBtnDown{220, 180, 60};
 
+// wide: the top screen in its 800x240 mode (3D slider down). Layouts stay in
+// 400x240 coordinates; each of those pixels is two of the screen's own
+// columns, and the scaled game picture uses all 800 (crisper than 400).
 struct Surface {
     u8* fb;
-    int w;  // 400 (top) or 320 (bottom)
+    int w;  // 400 (top) or 320 (bottom), in layout pixels
+    bool wide = false;
 };
 
 inline void Put(const Surface& s, int x, int y, RGB c) {
     if ((unsigned)x >= (unsigned)s.w || (unsigned)y >= 240u) return;
-    u8* p = s.fb + ((size_t)x * 240 + (239 - y)) * 3;
+    u8* p = s.fb + ((size_t)(s.wide ? x * 2 : x) * 240 + (239 - y)) * 3;
     p[0] = c.b;
     p[1] = c.g;
     p[2] = c.r;
+    if (s.wide) {
+        p[720] = c.b;  // the next screen column (240 pixels x 3 bytes on)
+        p[721] = c.g;
+        p[722] = c.r;
+    }
 }
 
 void Fill(const Surface& s, int x0, int y0, int w, int h, RGB c) {
     int x1 = std::min(s.w, x0 + w), y1 = std::min(240, y0 + h);
     x0 = std::max(0, x0);
     y0 = std::max(0, y0);
+    if (s.wide) {
+        x0 *= 2;
+        x1 *= 2;
+    }
     for (int x = x0; x < x1; x++) {
         u8* col = s.fb + (size_t)x * 240 * 3;
         for (int y = y0; y < y1; y++) {
@@ -505,6 +520,47 @@ const Button* ButtonAt(const std::vector<Button>& bs, int px, int py) {
     for (auto& b : bs)
         if (px >= b.x - 1 && px < b.x + b.w + 1 && py >= b.y - 2 && py < b.y + b.h + 2) return &b;
     return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// Buttons without the stylus. A rule of all these ports: anything you can tap
+// also works with the buttons. A gold ring marks the button the buttons act
+// on: on the keyboard and number pad the D-Pad moves it and A presses it; in
+// menus it sits on the button for the game's own highlight (which the D-Pad
+// moves); ZR puts it on the touch-screen buttons (the D-Pad moves it, A
+// presses it, B or ZR leaves) so the strip and the menu words are reachable
+// while the D-Pad walks. A press looks and clicks just like a tap.
+// ---------------------------------------------------------------------------
+bool buttonMode = false;  // ZR: the D-Pad drives the touch-screen buttons
+int navFocus = 0;         // ring position while the D-Pad drives the buttons
+u64 navNext = 0;          // D-Pad repeat
+int menuHighlight = -1;   // the game's highlighted menu word (guarded by menuLock)
+
+// The nearest button in the direction (dx, dy) from button `focus`.
+int NavMove(const std::vector<Button>& bs, int focus, int dx, int dy) {
+    if (bs.empty()) return 0;
+    focus = std::max(0, std::min(focus, (int)bs.size() - 1));
+    const Button& f = bs[focus];
+    int cx = f.x + f.w / 2, cy = f.y + f.h / 2, best = -1, bestD = 1 << 30;
+    for (int i = 0; i < (int)bs.size(); i++) {
+        if (i == focus) continue;
+        int x = bs[i].x + bs[i].w / 2, y = bs[i].y + bs[i].h / 2;
+        int along = dx ? (x - cx) * dx : (y - cy) * dy;
+        int across = dx ? std::abs(y - cy) : std::abs(x - cx);
+        if (along < 2) continue;
+        int d = along * 2 + across * 5;
+        if (d < bestD) {
+            bestD = d;
+            best = i;
+        }
+    }
+    return best >= 0 ? best : focus;
+}
+
+// The ring: two gold pixels outside the button's edge.
+void DrawRing(const Surface& s, const Button& b) {
+    Frame(s, b.x - 2, b.y - 2, b.w + 4, b.h + 4, kGold);
+    Frame(s, b.x - 3, b.y - 3, b.w + 6, b.h + 6, kGold);
 }
 
 // ---------------------------------------------------------------------------
@@ -891,14 +947,8 @@ void DrawDashboard(const Surface& top, const Context& cx) {
     Fill(top, 16, 190, 368, 1, kBtnEdge);
     Text(top, 16, 196, "Tap a choice on the game screen to pick it", kGrey);
     Text(top, 16, 208, "D-pad move/choose  A Enter  B Esc  X Yes", kGrey);
-    Text(top, 16, 220, "L/R party  ZR/C-Stick page  ZL swap", kGrey);
+    Text(top, 16, 220, "L/R party  C-Stick page  ZR buttons  ZL swap", kGrey);
     if (!ndspOk) Text(top, 16, 180, "No sound: run DSP1 once (dspfirm.cdc)", kRed);
-}
-
-void DrawGameOnTop(const Surface& top, const char* caption) {
-    Fill(top, 0, 0, 400, 240, kBlack);
-    BlitGame(top, 40, 20);
-    Text(top, (400 - TextWidth(caption)) / 2, 226, caption, kGrey);
 }
 
 // ---------------------------------------------------------------------------
@@ -973,6 +1023,23 @@ std::vector<Button> CombatStrip(const Context& cx) {
     return b;
 }
 
+// The button that stands for the game's own highlight right now (the list
+// entry, the host's hotkey-menu focus or the highlighted menu word), or -1.
+int GameFocus(const std::vector<Button>& bs, const Context& cx, bool hotMenu, int highlight) {
+    if (cx.list.active)
+        for (int i = 0; i < (int)bs.size(); i++)
+            if (bs[i].listRow == cx.list.hl) return i;
+    if (hotMenu && hotFocus < (int)cx.hot.size())
+        for (int i = 0; i < (int)bs.size(); i++)
+            if (bs[i].key == cx.hot[hotFocus].key && bs[i].label == cx.hot[hotFocus].label) return i;
+    if (highlight >= 0)
+        for (auto& it : cx.items)
+            if (it.index == highlight)
+                for (int i = 0; i < (int)bs.size(); i++)
+                    if (bs[i].key == keys::Letter(it.key) && bs[i].label == it.label) return i;
+    return -1;
+}
+
 // ---------------------------------------------------------------------------
 // Combat panel (top screen while the game is on the touch screen in combat)
 // ---------------------------------------------------------------------------
@@ -1001,53 +1068,36 @@ void DrawCombatPanel(const Surface& top, const std::vector<platform::PartyMember
     Text(top, 16, 196, "Tap a square to aim, a word to act", kGrey);
     Text(top, 16, 208, "D-pad/Circle Pad move (diagonals OK)", kGrey);
     Text(top, 16, 220, "Diagonals: L R up, C-Stick down  ZL swap", kGrey);
+    Text(top, 16, 231, "ZR: D-pad to the touch buttons, A presses", kGrey);
 }
 
 // ---------------------------------------------------------------------------
 // The game on the top screen, with optional 3D: the view/picture window
 // (88x88 at 16,16) sits behind the screen; frame and text at the screen.
 // ---------------------------------------------------------------------------
-void BlitGameShifted(const Surface& s, int ox, int oy, int shift) {
-    LightLock_Lock(&frameLock);
-    for (int x = 0; x < 320; x++) {
-        u8* col = s.fb + (size_t)(x + ox) * 240 * 3;
-        for (int y = 0; y < 200; y++) {
-            int sx = x;
-            bool black = false;
-            if (shift && x >= 16 && x < 104 && y >= 16 && y < 104) {
-                sx = x - shift;
-                black = sx < 16 || sx > 103;  // uncovered by the shift: dark, not smeared
-            }
-            static const uint8_t kZero[3] = {0, 0, 0};
-            const uint8_t* c = black ? kZero : framePal + egaFrame[y * 320 + sx] * 3;
-            u8* p = col + (239 - (y + oy)) * 3;
-            p[0] = c[2];
-            p[1] = c[1];
-            p[2] = c[0];
-        }
-    }
-    LightLock_Unlock(&frameLock);
-}
-
-// The game scaled 6/5 to 384x240 (fills the top screen's height, keeps the
-// shape), with the same recessed view window for 3D.
+// The game stretched to fill the whole top screen (320x200 -> 400x240: 5/4
+// across, 6/5 down; no side bars), with the same recessed view window for 3D.
+// In wide mode (slider down) the picture is drawn into the screen's 800
+// columns (2.5 per game pixel, so every game pixel is 2 or 3 columns wide
+// instead of 1 or 2: even, crisp pixels).
 // eye: -1 left, +1 right, 0 flat. strength: the 3D slider (0..1). Each pixel's
 // depth layer L (from the game's 3D view: 1 near walls .. 4 sky/floor) is
 // shown shifted by eye * L * maxShift source pixels, so the corridor recedes
 // into the screen; the nearest layer claiming a pixel wins.
-void BlitGameScaled(const Surface& s, int ox, int eye, float strength) {
+void BlitGameScaled(const Surface& s, int eye, float strength) {
     // Disparity (source pixels, per eye) for a depth d in 0..4: at most
     // ~2.5 px for the furthest things at full slider; walls by distance,
     // floor and sky graded by row (near the view's edges = close, the
     // horizon = far) so the ground doesn't look like a flat backdrop.
-    bool stereo = eye != 0 && strength > 0.01f;
+    bool stereo = !s.wide && eye != 0 && strength > 0.01f;
     const float maxD = 2.5f * strength;
     auto shiftFor = [&](float d) { return eye * (int)(maxD * d / 4.0f + 0.5f); };
     const int wallShift[4] = {0, shiftFor(1.3f), shiftFor(2.3f), shiftFor(3.1f)};
+    const int cols = s.wide ? 800 : 400;
     LightLock_Lock(&frameLock);
-    for (int x = 0; x < 384; x++) {
-        u8* col = s.fb + (size_t)(x + ox) * 240 * 3;
-        int sx0 = x * 5 / 6;
+    for (int x = 0; x < cols; x++) {
+        u8* col = s.fb + (size_t)x * 240 * 3;
+        int sx0 = x * 320 / cols;
         for (int y = 0; y < 240; y++) {
             int sy = y * 5 / 6, sx = sx0;
             if (stereo && sx0 >= 16 && sx0 < 104 && sy >= 16 && sy < 104) {
@@ -1069,19 +1119,19 @@ void BlitGameScaled(const Surface& s, int ox, int eye, float strength) {
             p[2] = c[0];
         }
     }
-    // Text: scaling pixels by 6/5 makes letters uneven, so redraw every text
-    // cell the game shows with its glyph unscaled (crisp), centred in the
-    // enlarged 9.6 x 9.6 cell.
+    // Text: stretched pixels make letters uneven, so every text cell the game
+    // shows is redrawn with its glyph unscaled (crisp, on whole pixels),
+    // centred in the enlarged 10 x 9.6 cell.
     for (int r = 0; r < 25; r++)
         for (int c = 0; c < 40; c++) {
             if (!CellShows(r, c)) continue;
             const Cell& cell = textMap[r][c];
             const uint8_t* g = ReadableGlyph((unsigned char)cell.ch);
-            int x0 = c * 48 / 5, x1 = (c + 1) * 48 / 5, y0 = r * 48 / 5, y1 = (r + 1) * 48 / 5;
+            int x0 = c * 10, y0 = r * 48 / 5, y1 = (r + 1) * 48 / 5;
             const uint8_t* bg = framePal + cell.bg * 3;
             const uint8_t* fg = framePal + cell.fg * 3;
-            Fill(s, ox + x0, y0, x1 - x0, y1 - y0, RGB{bg[0], bg[1], bg[2]});
-            int gx = ox + x0 + (x1 - x0 - 8) / 2, gy = y0 + (y1 - y0 - 8) / 2;
+            Fill(s, x0, y0, 10, y1 - y0, RGB{bg[0], bg[1], bg[2]});
+            int gx = x0 + 1, gy = y0 + (y1 - y0 - 8) / 2;
             for (int yy = 0; yy < 8; yy++)
                 for (int xx = 0; xx < 8; xx++)
                     if (g[yy] & (0x80 >> xx)) Put(s, gx + xx, gy + yy, RGB{fg[0], fg[1], fg[2]});
@@ -1089,14 +1139,30 @@ void BlitGameScaled(const Surface& s, int ox, int eye, float strength) {
     LightLock_Unlock(&frameLock);
 }
 
-void DrawGameTop(const Surface& left, const Surface& right, float depth, const char* /*caption*/) {
-    Fill(left, 0, 0, 8, 240, kBlack);
-    Fill(left, 392, 0, 8, 240, kBlack);
-    BlitGameScaled(left, 8, -1, depth);
+// The touchpad's pointer (swapped combat): an arrow at a game-frame point,
+// drawn at screen depth on the stretched top picture.
+void DrawPointer(const Surface& s, int gx, int gy) {
+    int x = gx * 5 / 4, y = gy * 6 / 5;
+    for (int i = 0; i < 11; i++) {  // black outline, then a white arrow
+        int w = i < 8 ? i + 1 : 11 - i;
+        Fill(s, x - 1, y + i - 1, w + 2, 3, kBlack);
+    }
+    for (int i = 0; i < 10; i++) {
+        int w = i < 7 ? i + 1 : 10 - i;
+        Fill(s, x, y + i, w, 1, kWhite);
+    }
+}
+
+// The game on the top screen. depth: the 3D slider; stereo only when the
+// top screen is in its 3D mode (not wide). pointer: draw the touchpad's
+// pointer (game-frame coordinates) when px >= 0.
+void DrawGameTop(const Surface& left, const Surface& right, float depth, int px = -1, int py = -1) {
+    BlitGameScaled(left, -1, depth);
+    if (px >= 0) DrawPointer(left, px, py);
+    if (left.wide) return;  // one 800-wide picture, no second eye
     if (depth > 0.01f) {
-        Fill(right, 0, 0, 8, 240, kBlack);
-        Fill(right, 392, 0, 8, 240, kBlack);
-        BlitGameScaled(right, 8, 1, depth);
+        BlitGameScaled(right, 1, depth);
+        if (px >= 0) DrawPointer(right, px, py);
     } else {
         std::memcpy(right.fb, left.fb, 400 * 240 * 3);
     }
@@ -1281,6 +1347,19 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
         viewer.scroll = 0;
     };
     if (down & (KEY_B | KEY_START)) viewer.open = false;
+    // L / R: previous / next section; past the first or last section they go
+    // on to the previous / next book, so every tab is reachable without touch.
+    if ((down & KEY_L) && viewer.section == 0 && books.size() > 1) {
+        viewer.book = (viewer.book + (int)books.size() - 1) % (int)books.size();
+        viewer.section = viewer.focus = (int)books[viewer.book].sections.size() - 1;
+        viewer.scroll = 0;
+        return ViewerFrame(0, held, now, top, topR, bottom);
+    }
+    if ((down & KEY_R) && viewer.section == n - 1 && books.size() > 1) {
+        viewer.book = (viewer.book + 1) % (int)books.size();
+        viewer.section = viewer.focus = viewer.scroll = 0;
+        return ViewerFrame(0, held, now, top, topR, bottom);
+    }
     if (down & KEY_L) openSection(viewer.section - 1);
     if (down & KEY_R) openSection(viewer.section + 1);
     if (down & KEY_A) openSection(viewer.focus);
@@ -1343,7 +1422,7 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
         Fill(top, 395, 19, 3, 210, RGB{50, 44, 30});
         Fill(top, 395, y, 3, h, kGold);
     }
-    std::memcpy(topR.fb, top.fb, 400 * 240 * 3);
+    if (!top.wide) std::memcpy(topR.fb, top.fb, 400 * 240 * 3);
 
     // Bottom: tabs, section buttons, focus, help
     Fill(bottom, 0, 0, 320, 240, kDash);
@@ -1453,6 +1532,12 @@ void MenuHide() {
     menuPrompt.clear();
     menuVisible = false;
     menuAcceptsDirections = true;
+    LightLock_Unlock(&menuLock);
+}
+
+void MenuHighlight(int index) {
+    LightLock_Lock(&menuLock);
+    menuHighlight = index;
     LightLock_Unlock(&menuLock);
 }
 
@@ -1583,7 +1668,10 @@ int main(int argc, char** argv) {
 
     gfxSetDoubleBuffering(GFX_TOP, true);
     gfxSetDoubleBuffering(GFX_BOTTOM, true);
-    gfxSet3D(true);  // the game window gets depth when the 3D slider is up
+    // Top screen: 800x240 wide mode while the 3D slider is down (crisper),
+    // the two 400x240 eyes while it is up (the dungeon view gets depth).
+    bool wideOn = false;
+    gfxSet3D(true);
     LoadAutomap();
     std::srand((unsigned)osGetTime());
 
@@ -1618,12 +1706,25 @@ int main(int argc, char** argv) {
     bool lastCombat = false;
     int lastMapX = -1, lastMapY = -1, lastMapDir = -1, lastMapBlock = -1;
     u64 lastSave = 0;
+    int lastOverlay = 0;
+    // Touchpad (combat with the game swapped to the top screen): the touch
+    // screen moves a pointer over the game like a laptop's touchpad.
+    int padX = 84, padY = 84, padLX = 0, padLY = 0, padMoved = 0;
+    bool padTracking = false, padPlaced = false;
+    u64 padStart = 0;
 
     while (aptMainLoop() && !engineDone && !quit) {
         hidScanInput();
         u32 down = hidKeysDown();
         u32 held = hidKeysHeld();
+        u32 released = hidKeysUp();
         u64 now = osGetTime();
+        float depth = osGet3DSliderState();
+        if ((depth <= 0.01f) != wideOn) {
+            wideOn = depth <= 0.01f;
+            gfxSetWide(wideOn);
+            gfxSet3D(!wideOn);
+        }
 
         // Snapshot what the engine has published.
         Context cx;
@@ -1638,6 +1739,7 @@ int main(int argc, char** argv) {
         cx.acceptsDirections = menuAcceptsDirections;
         cx.entry = entryKind;
         cx.entryMaxValue = entryMax;
+        int highlight = menuHighlight;
         LightLock_Unlock(&menuLock);
         cx.state = host::GameStateNow();
         bool combat = cx.state == kStateCombat;
@@ -1706,6 +1808,13 @@ int main(int argc, char** argv) {
         }
         bool numberPad = cx.entry == 3;
         bool overlay = keyboardOpen || numberPad;
+        int overlayKind = keyboardOpen ? 1 + keyboardPage : numberPad ? 3 : 0;
+        if (overlayKind != lastOverlay) {  // a new key set: the ring starts on its first key
+            navFocus = -1;
+            lastOverlay = overlayKind;
+        }
+        if (overlay) buttonMode = false;
+        bool navActive = overlay || buttonMode;  // the D-Pad drives the touch-screen buttons
 
         if (!overlay) {
             cx.words = VisibleWords(cx.items);
@@ -1739,8 +1848,8 @@ int main(int argc, char** argv) {
         // The book takes over both screens and all input while open.
         if (viewer.open) {
             u16 vw, vh;
-            Surface vtop{gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &vw, &vh), 400};
-            Surface vtopR{gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, &vw, &vh), 400};
+            Surface vtop{gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &vw, &vh), 400, wideOn};
+            Surface vtopR{wideOn ? vtop.fb : gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, &vw, &vh), 400, wideOn};
             Surface vbottom{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &vw, &vh), 320};
             ViewerFrame(down, held, now, vtop, vtopR, vbottom);
             gfxFlushBuffers();
@@ -1772,10 +1881,24 @@ int main(int argc, char** argv) {
             swapped = !swapped;
         }
 
-        if (down & KEY_A) host::PushKey(hotMenu ? cx.hot[hotFocus].key : keys::Enter);
+        // ZR: the D-Pad drives the touch-screen buttons (again, or B: back).
+        bool navPress = false;
+        if (!overlay && (down & KEY_ZR)) {
+            buttonMode = !buttonMode;
+            navFocus = -1;  // placed on the game's highlight once the buttons are known
+            navActive = buttonMode;
+        } else if (buttonMode && (down & KEY_B)) {
+            buttonMode = navActive = false;
+            down &= ~KEY_B;
+        }
+        if (navActive) {
+            navPress = (down & KEY_A) != 0;  // presses the ringed button (below)
+        } else if (down & KEY_A) {
+            host::PushKey(hotMenu ? cx.hot[hotFocus].key : keys::Enter);
+        }
         // START = Enter on release, unless it was part of START+SELECT.
         if (down & KEY_START) startUsedForCombo = (held & KEY_SELECT) != 0;
-        if ((hidKeysUp() & KEY_START) && !startUsedForCombo) host::PushKey(keys::Enter);
+        if ((released & KEY_START) && !startUsedForCombo) host::PushKey(keys::Enter);
         if (down & KEY_B) host::PushKey(keys::Escape);
         if (cx.entry == 1 || cx.entry == 2) {
             if (down & KEY_Y) host::PushKey(keys::Backspace);  // typing: Y deletes, X does nothing
@@ -1793,7 +1916,6 @@ int main(int argc, char** argv) {
             if (!overlay && (down & KEY_CSTICK_LEFT)) host::PushKey(keys::End);   // down-left
             if (!overlay && (down & KEY_CSTICK_RIGHT)) host::PushKey(keys::PageDown);   // down-right
             if (down & KEY_R) host::PushKey(keys::PageUp);
-            if (down & KEY_ZR) host::PushKey(keys::PageDown);
         } else {
             // coab: Home / End = previous / next party member; PgUp / PgDn
             // page through long lists.
@@ -1801,15 +1923,14 @@ int main(int argc, char** argv) {
             if (down & KEY_R) host::PushKey(keys::End);
             if (!overlay && (down & KEY_CSTICK_UP)) host::PushKey(keys::PageUp);
             if (!overlay && (down & KEY_CSTICK_DOWN)) host::PushKey(keys::PageDown);
-            if (down & KEY_ZR) host::PushKey(keys::PageDown);
         }
 
         // ---- directions (D-pad, Circle Pad) with key repeat ----
         bool up = held & (KEY_DUP | KEY_CPAD_UP), dn = held & (KEY_DDOWN | KEY_CPAD_DOWN);
         bool lf = held & (KEY_DLEFT | KEY_CPAD_LEFT), rt = held & (KEY_DRIGHT | KEY_CPAD_RIGHT);
         uint16_t dirKey = 0;
-        if (overlay) {
-            dirKey = 0;
+        if (navActive) {
+            dirKey = 0;  // the D-Pad moves the ring (below), not the game
         } else if (hotMenu) {
             if (up || lf) dirKey = kFocusPrev;
             else if (dn || rt) dirKey = kFocusNext;
@@ -1938,66 +2059,140 @@ int main(int argc, char** argv) {
                 buttons.insert(buttons.end(), choices.begin(), choices.end());
             }
         }
+        int gameFocus = overlay ? -1 : GameFocus(buttons, cx, hotMenu, highlight);
 
+        // A tap on a button, or A on the ringed one: the same press.
+        auto pressButton = [&](const Button* b) -> uint16_t {
+            uint16_t k = 0;
+            PlayClick();
+            flashKey = b->key;
+            flashRow = b->listRow;
+            flashMember = b->member;
+            flashUntil = now + 150;
+            if (b->listRow >= 0) {
+                if (b->listRow == cx.list.hl) k = ListActionKey(cx.items);
+                else {
+                    StartWalk(1, b->listRow, now);
+                    walk.row0 = cx.list.row0;
+                    walk.thenAct = ListVerbCount(cx.items) == 1;
+                }
+            } else if (b->member >= 0) {
+                if (b->member != cx.roster.selected) StartWalk(2, b->member, now);
+            } else if (b->key == kToggleKeyboard) {
+                keyboardOpen = !keyboardOpen;
+                keyboardAuto = false;
+            } else if (b->key == kBook) {
+                OpenViewerAtEntry(journalEntry);
+            } else if (b->key == kKbPage) {
+                keyboardPage ^= 1;
+            } else if (b->key == kSwap) {
+                userFlip = !userFlip;
+            } else if (b->key == kRandomName) {
+                for (int i = 0; i < 16; i++) host::PushKey(keys::Backspace);
+                const char* n = kNames[std::rand() % (sizeof kNames / sizeof kNames[0])];
+                for (const char* c = n; *c; c++) host::PushKey(keys::Letter(*c));
+            } else if (b->key == kNumAll) {
+                for (int i = 0; i < 8; i++) host::PushKey(keys::Backspace);
+                for (int i = 0; i < 6; i++) host::PushKey((uint16_t)'9');  // the game caps it at the maximum
+            } else if (b->key == kNumClear) {
+                for (int i = 0; i < 8; i++) host::PushKey(keys::Backspace);
+            } else {
+                k = b->key;
+            }
+            return k;
+        };
+
+        // ---- the ring: D-Pad moves it, A presses ----
+        if (navActive && !buttons.empty()) {
+            if (navFocus < 0) {
+                navFocus = gameFocus >= 0 ? gameFocus : 0;
+                for (int i = 0; i < (int)buttons.size(); i++)  // keyboard page flipped: stay on its key
+                    if (overlay && flashKey == kKbPage && buttons[i].key == kKbPage) navFocus = i;
+            }
+            navFocus = std::min(navFocus, (int)buttons.size() - 1);
+            int dx = (held & KEY_DRIGHT) ? 1 : (held & KEY_DLEFT) ? -1 : 0;
+            int dy = dx ? 0 : (held & KEY_DDOWN) ? 1 : (held & KEY_DUP) ? -1 : 0;
+            bool fresh = down & (KEY_DUP | KEY_DDOWN | KEY_DLEFT | KEY_DRIGHT);
+            if ((dx || dy) && (fresh || now >= navNext)) {
+                navFocus = NavMove(buttons, navFocus, dx, dy);
+                navNext = now + (fresh ? 350 : 120);
+            }
+            if (navPress) {
+                const Button b = buttons[navFocus];  // a copy: the press may change the key set
+                if (buttonMode) buttonMode = false;  // one press, then the D-Pad is the game's again
+                if (uint16_t k = pressButton(&b)) host::PushKey(k);
+            }
+        } else if (!navActive && (down & KEY_A) && gameFocus >= 0) {
+            // A picks the game's highlight (sent above); press its button too
+            const Button& b = buttons[gameFocus];
+            PlayClick();
+            flashKey = b.key;
+            flashRow = b.listRow;
+            flashMember = b.member;
+            flashUntil = now + 150;
+        }
+
+        bool touchpad = swapped && combat && !overlay;  // pointing at the game on the top screen
+        if (!touchpad) {
+            padTracking = padPlaced = false;
+        } else if (!padPlaced) {  // start on the aiming cursor (or mid-map)
+            padX = cx.aim.active ? (cx.aim.mx - cx.aim.tx) * 24 + 12 : 84;
+            padY = cx.aim.active ? (cx.aim.my - cx.aim.ty) * 24 + 12 : 84;
+            padX = std::max(0, std::min(319, padX));
+            padY = std::max(0, std::min(199, padY));
+            padPlaced = true;
+        }
         if (down & KEY_TOUCH) {
             touchPosition t;
             hidTouchRead(&t);
+            buttonMode = false;
             const Button* b = ButtonAt(buttons, t.px, t.py);
             uint16_t k = 0;
             if (b) {
-                PlayClick();
-                flashKey = b->key;
-                flashRow = b->listRow;
-                flashMember = b->member;
-                flashUntil = now + 150;
-                if (b->listRow >= 0) {
-                    if (b->listRow == cx.list.hl) k = ListActionKey(cx.items);
-                    else {
-                        StartWalk(1, b->listRow, now);
-                        walk.row0 = cx.list.row0;
-                        walk.thenAct = ListVerbCount(cx.items) == 1;
-                    }
-                } else if (b->member >= 0) {
-                    if (b->member != cx.roster.selected) StartWalk(2, b->member, now);
-                } else if (b->key == kToggleKeyboard) {
-                    keyboardOpen = !keyboardOpen;
-                    keyboardAuto = false;
-                } else if (b->key == kBook) {
-                    OpenViewerAtEntry(journalEntry);
-                } else if (b->key == kKbPage) {
-                    keyboardPage ^= 1;
-                } else if (b->key == kSwap) {
-                    userFlip = !userFlip;
-                } else if (b->key == kRandomName) {
-                    for (int i = 0; i < 16; i++) host::PushKey(keys::Backspace);
-                    const char* n = kNames[std::rand() % (sizeof kNames / sizeof kNames[0])];
-                    for (const char* c = n; *c; c++) host::PushKey(keys::Letter(*c));
-                } else if (b->key == kNumAll) {
-                    for (int i = 0; i < 8; i++) host::PushKey(keys::Backspace);
-                    for (int i = 0; i < 6; i++) host::PushKey((uint16_t)'9');  // the game caps it at the maximum
-                } else if (b->key == kNumClear) {
-                    for (int i = 0; i < 8; i++) host::PushKey(keys::Backspace);
-                } else {
-                    k = b->key;
-                }
+                k = pressButton(b);
+            } else if (touchpad && t.py < 200) {
+                padTracking = true;
+                padLX = t.px;
+                padLY = t.py;
+                padMoved = 0;
+                padStart = now;
             } else if (!overlay && !swapped && t.py < 200) {
                 k = GameTap(t.px, t.py, cx, now);
                 flashKey = 0;
                 flashUntil = now + 150;
             }
             if (k) host::PushKey(k);
+        } else if (padTracking && (held & KEY_TOUCH)) {
+            // slide: move the pointer by how far the finger moves (a little
+            // faster than 1:1 so one slide crosses the combat map)
+            touchPosition t;
+            hidTouchRead(&t);
+            int dx = t.px - padLX, dy = t.py - padLY;
+            if (dx || dy) {
+                padX = std::max(0, std::min(319, padX + dx * 5 / 4));
+                padY = std::max(0, std::min(199, padY + dy * 5 / 4));
+                padMoved += std::abs(dx) + std::abs(dy);
+                padLX = t.px;
+                padLY = t.py;
+            }
+        }
+        if (padTracking && (released & KEY_TOUCH)) {
+            padTracking = false;
+            // a short tap clicks where the pointer is (aim / Target, as a tap
+            // on the game would)
+            if (touchpad && padMoved < 8 && now < padStart + 350)
+                if (uint16_t k = GameTap(padX, padY, cx, now)) host::PushKey(k);
         }
 
         // ---- draw ----
         u16 w, h;
-        Surface top{gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &w, &h), 400};
-        Surface topR{gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, &w, &h), 400};
+        Surface top{gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &w, &h), 400, wideOn};
+        Surface topR{wideOn ? top.fb : gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, &w, &h), 400, wideOn};
         Surface bottom{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &w, &h), 320};
-        float depth = osGet3DSliderState();
         bool topDone = false;
 
         if (overlay) {
-            DrawGameTop(top, topR, 0, keyboardOpen ? "Keyboard - HIDE to return" : "How much? - OK when done");
+            DrawGameTop(top, topR, 0);
             topDone = true;
             Fill(bottom, 0, 0, 320, 240, kDash);
             if (numberPad) {
@@ -2007,9 +2202,14 @@ int main(int argc, char** argv) {
             }
             DrawButtons(bottom, buttons, now);
         } else if (swapped) {
-            DrawGameTop(top, topR, cx.state == kStateDungeon ? depth : 0.0f, "SELECT: game on the touch screen");
+            DrawGameTop(top, topR, cx.state == kStateDungeon ? depth : 0.0f, touchpad ? padX : -1, padY);
             topDone = true;
             Fill(bottom, 0, 0, 320, 240, kDash);
+            if (touchpad) {  // the free area works as a touchpad (unless a button sits there)
+                bool clear = true;
+                for (auto& b : buttons) clear &= !(b.y < 198 && b.y + b.h > 184);
+                if (clear) Text(bottom, 12, 188, "Touchpad: slide to point, tap to pick", kGrey);
+            }
             if (ExplorePanelWanted(cx, cx.map)) {
                 DrawAutomap(bottom, 6, 6, 9, cx.map);
                 static const char* dirs[4] = {"North", "East", "South", "West"};
@@ -2017,6 +2217,7 @@ int main(int argc, char** argv) {
                 std::snprintf(info, sizeof info, "%d,%d facing %s", cx.map.x, cx.map.y, dirs[(cx.map.dir & 6) / 2]);
                 Text(bottom, 6, 158, info, kGrey);
                 Text(bottom, 6, 172, "L/R party  B back", kGrey);
+                Text(bottom, 6, 184, "ZR+D-Pad: buttons", kGrey);
             }
             DrawButtons(bottom, buttons, now);
         } else {
@@ -2036,7 +2237,12 @@ int main(int argc, char** argv) {
             Text(bottom, 60, 104, "Keep holding START+SELECT", kWhite);
             Text(bottom, 60, 120, "to quit (saves nothing)", kWhite);
         }
-        if (!topDone) std::memcpy(topR.fb, top.fb, 400 * 240 * 3);
+        // The ring: on the button the D-Pad drives, or on the game's highlight.
+        {
+            int ring = navActive ? navFocus : gameFocus;
+            if (ring >= 0 && ring < (int)buttons.size() && !quitSince) DrawRing(bottom, buttons[ring]);
+        }
+        if (!topDone && !top.wide) std::memcpy(topR.fb, top.fb, 400 * 240 * 3);
 
         gfxFlushBuffers();
         gfxSwapBuffers();

@@ -4,6 +4,8 @@ Everything can be done with the stylus or the buttons; the keyboard only opens b
 
 Outside combat the game is on the top screen and the touch screen shows big buttons for whatever the game is asking. In combat the game moves to the touch screen so you can tap to aim. ZL (or SELECT, or SWAP) flips the screens any time.
 
+Every touch button also works with the buttons: a gold ring shows the button A will press.
+
 ## Buttons
 A or START: Enter (pick the highlighted choice).
 
@@ -15,13 +17,22 @@ Y: Space. While typing, Y deletes a letter.
 
 D-Pad / Circle Pad: walk and turn in the 3D view, step through menu words, move the highlight in lists, or move the gold highlight in menus such as the start menu.
 
-L / R: previous / next party member. In a list, the D-Pad moves the highlight. In combat, L and R move up-left and up-right; the C-Stick left and right move down-left and down-right (ZR also moves down-right). In the Aim menu, L / R pick the previous / next target.
+L / R: previous / next party member. In a list, the D-Pad moves the highlight. In combat, L and R move up-left and up-right; the C-Stick left and right move down-left and down-right. In the Aim menu, L / R pick the previous / next target.
 
-C-Stick up / down (or ZR for down): page up / down in long lists.
+C-Stick up / down: page up / down in long lists.
+
+ZR: use the touch-screen buttons with the D-Pad. The gold ring moves to the buttons (ESC, YES, NO, ENTER, KEYS, SWAP, BOOK and the game's choices); the D-Pad moves it, A presses the ringed button. B or ZR goes back without pressing anything. After a press the D-Pad walks again.
 
 ZL: swap screens, any time. SELECT does the same.
 
 Hold START + SELECT for a second: quit.
+
+## The gold ring
+In menus and lists the D-Pad moves the game's highlight, and the gold ring sits on the matching big button; A presses it (it lights up and clicks, as a tap would).
+
+On the keyboard and the number pad the D-Pad moves the ring between the keys and A presses the ringed key. START is Enter.
+
+While you explore, the D-Pad walks, so the ring stays on the menu word the game has highlighted (A picks it). Press ZR to move the ring to any other button.
 
 ## Touch screen
 Tap a word on the game's menu line, a line in a menu, or an entry in a list to pick it. In a list with more than one action, the first tap highlights the entry and a second tap acts on it.
@@ -46,6 +57,8 @@ The combat menu words (Move, View, Aim, Use, Cast, Turn, Quick, Done) appear as 
 
 To attack or cast at something, tap its square once to move the aiming cursor there (the game shows the range and the target), then tap the same square again to Target it.
 
+If you swap the fight to the top screen (ZL), the touch screen becomes a touchpad: slide a finger to move the white pointer on the top screen, and tap to aim at the square under it (tap again to Target). Without the stylus, use the Aim menu: L / R pick the previous / next target, Manual gives a cursor the D-Pad moves.
+
 Hold a diagonal on the D-Pad or Circle Pad to move diagonally.
 
 ## Amounts, names and typing
@@ -56,10 +69,12 @@ When the game wants a name or an answer, the keyboard opens and closes by itself
 ## The journal and this book
 The game sometimes tells you to read an entry in the Adventurer's Journal. When it does, the BOOK button shows the entry number (for example J.12); tap it to open that entry.
 
-In this book: the Circle Pad or C-Stick scrolls the text (hold to keep scrolling); the D-Pad moves between the section buttons and A opens one; L / R go to the previous / next section; tap a section or a tab to open it; B or START closes the book.
+In this book: the Circle Pad or C-Stick scrolls the text (hold to keep scrolling); the D-Pad moves between the section buttons and A opens one; L / R go to the previous / next section (past the last section, on to the next tab); tap a section or a tab to open it; B or START closes the book.
+
+Without the stylus, ZR, the D-Pad to BOOK, then A opens the book.
 
 ## 3D
-Raise the 3D slider for depth in the dungeon view: near walls just behind the frame, far walls and the horizon deeper. Slide it down for a flat picture.
+Raise the 3D slider for depth in the dungeon view: near walls just behind the frame, far walls and the horizon deeper. Slide it all the way down for a flat picture; the top screen then uses its sharper 800-pixel-wide mode.
 
 ## Starting the game
 The title menu waits on Play; the demo only runs if you pick Demo, and any button ends it.

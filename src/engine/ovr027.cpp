@@ -82,6 +82,7 @@ ovr027::HighlightSet ovr027::BuildInputKeys(String menuText, int& highlighCount)
 void ovr027::display_highlighed_text(int highlighed_word, int highlightFgColor,
     String text, int xOffset, int fgColor, HighlightSet highlights) /* sub_6C1E9 */
 {
+    platform::MenuHighlight(highlighed_word);  // goldbox-3ds: display-only hint for the host
     if (text.Length() > 0)
     {
         for (int i = 0; i < text.Length(); i++)
@@ -137,7 +138,7 @@ char ovr027::displayInput(bool& specialKeyPressed, bool useOverlay, byte accept_
             if (st < 0 || st >= displayInputString.Length()) continue;
             if (en >= displayInputString.Length()) en = displayInputString.Length() - 1;
             String label = displayInputString.Substring(st, Math::Max(1, en - st + 1)).Trim();
-            items.push_back({label, displayInputString[st], displayExtraString.Length() + st, en - st + 1});
+            items.push_back({label, displayInputString[st], displayExtraString.Length() + st, en - st + 1, w});
         }
         platform::MenuShow(displayExtraString, items, accept_ctrlkeys != 0);
     }

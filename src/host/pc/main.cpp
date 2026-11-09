@@ -109,6 +109,7 @@ void Sleep(int ms) { SDL_Delay((Uint32)ms); }
 
 void MenuShow(const std::string&, const std::vector<MenuItem>&, bool) {}
 void MenuHide() {}
+void MenuHighlight(int) {}
 void ListShow(int, int, int, int, int) {}
 void ListHide() {}
 void PresentDepth(const uint8_t*) {}

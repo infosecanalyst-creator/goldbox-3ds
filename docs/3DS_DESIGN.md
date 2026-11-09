@@ -16,16 +16,24 @@ the Krynn and Savage Frontier games, etc.
   (`host::PendingKeys`), so movement stops when the button is released.
 
 ## Screens
-- Exploring and menus: the game on the TOP screen, scaled 6/5 to 384x240 (fills
-  the height, keeps the shape). Text is redrawn crisp at 1:1 in the enlarged
-  cells.
+- Exploring and menus: the game on the TOP screen, filling all of it (400x240:
+  5/4 across, 6/5 down; no side bars, no touch-only chrome). Text is redrawn
+  crisp at 1:1 in the enlarged 10 x 9.6 cells, on whole pixels.
+- With the 3D slider down the top screen runs in its 800x240 wide mode
+  (`gfxSetWide(true)`, `gfxSet3D(false)`); layouts stay in 400x240 coordinates
+  (each layout pixel is two screen columns) and the game picture is drawn into
+  all 800 columns (2.5 per game pixel: even 2/3-column pixels instead of 1/2).
+  Slider up: back to the two 400x240 eyes for the dungeon stereo.
 - The touch screen then shows the game's current choices as big buttons, and while
   exploring an automap (visited squares, walls, doors, facing arrow; saved per
   map) beside the menu words.
 - Combat: the game moves to the TOUCH screen for stylus aiming (tap a square
   once to aim, again to Target); combat menu words become the bottom strip; the
   top screen is a combat panel (HP bars, AC, status, whose turn).
-- SELECT / SWAP flips the automatic choice until combat starts or ends.
+- ZL / SELECT / SWAP flips the automatic choice until combat starts or ends.
+- Combat swapped to the top: the touch screen's free area is a touchpad (slide
+  moves a pointer drawn on the top screen, a short tap = a tap on the game at
+  the pointer: aim, then Target). No right button: the game has none.
 - Bottom strip: ESC YES NO ENTER KEYS SWAP BOOK (BOOK shows "J.nn" when the game
   mentions a journal entry).
 
@@ -39,13 +47,26 @@ the Krynn and Savage Frontier games, etc.
 - Lists highlight their action word (Select) rather than Exit; hotkey menus get a
   host-drawn gold highlight moved by the D-Pad.
 
+## Buttons without the stylus (gold ring)
+- Every touch button works with the buttons. A gold ring (2 px outside the
+  button) shows what A presses; A gives the same click and press animation.
+- Menus and lists: the D-Pad moves the game's own highlight; the ring sits on
+  the matching big button (list entry, hotkey line, highlighted menu word -
+  the engine publishes the word via `platform::MenuHighlight`, display-only).
+- Keyboard / number pad: the D-Pad moves the ring between keys, A presses,
+  START = Enter.
+- ZR: the ring moves onto the touch-screen buttons (strip + choices) while the
+  D-Pad would walk; D-Pad moves it, A presses (then back to walking), B / ZR
+  leave. The book: L / R run on across tabs, so every tab is reachable.
+
 ## Controls
 - A / START = Enter (START on release), B = Esc, X = Yes, Y = Space (Backspace
   while typing).
 - D-Pad / Circle Pad: walk and turn; step menu words; move list highlights
   (Home/End); 8-way in combat (diagonals given ~80 ms to form).
-- L / R = previous / next party member; in combat L/ZL R/ZR are diagonals; in
-  the Aim menu L/R = previous/next target. ZL / ZR page lists.
+- L / R = previous / next party member; in combat L / R are the up diagonals,
+  C-Stick left / right the down diagonals; in the Aim menu L/R = previous/next
+  target. C-Stick up / down page lists. ZL = swap screens, ZR = button ring.
 - Hold START + SELECT for a second to quit.
 
 ## Text must fit (checked on every build)
