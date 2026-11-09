@@ -1750,8 +1750,8 @@ int main(int argc, char** argv) {
         float depth = osGet3DSliderState();
         if ((depth <= 0.01f) != wideOn) {
             wideOn = depth <= 0.01f;
-            gfxSetWide(wideOn);
-            gfxSet3D(!wideOn);
+            // libctru keeps 3D and wide in one setting (gfxTopMode): each call replaces the other, so call only the wanted one
+            if (wideOn) gfxSetWide(true); else gfxSet3D(true);
         }
 
         // Snapshot what the engine has published.
