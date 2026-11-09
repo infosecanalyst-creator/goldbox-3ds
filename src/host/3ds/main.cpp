@@ -381,6 +381,32 @@ constexpr int kStateWilderness = 3, kStateDungeon = 4, kStateCombat = 5;
 // ---------------------------------------------------------------------------
 // Buttons
 // ---------------------------------------------------------------------------
+// Left-handed play: the D-pad and A/B/X/Y swap jobs (Y<->up, A<->right, B<->down, X<->left).
+// Toggled from the manual's touch screen; remembered by a marker file.
+bool leftyOn = false, leftyLoaded = false;
+constexpr const char* kLeftyFile = "sdmc:/3ds/goldbox/user/.lefty";
+void LeftyLoad() {
+    if (FILE* f = std::fopen(kLeftyFile, "rb")) { std::fclose(f); leftyOn = true; }
+    leftyLoaded = true;
+}
+void LeftySet(bool on) {
+    leftyOn = on;
+    if (on) { if (FILE* f = std::fopen(kLeftyFile, "wb")) std::fclose(f); }
+    else std::remove(kLeftyFile);
+}
+u32 RemapKeys(u32 m) {
+    static const u32 pr[4][2] = {{KEY_Y, KEY_DUP}, {KEY_A, KEY_DRIGHT}, {KEY_B, KEY_DDOWN}, {KEY_X, KEY_DLEFT}};
+    if (!leftyLoaded) LeftyLoad();
+    if (!leftyOn) return m;
+    u32 r = m;
+    for (auto& q : pr) r &= ~(q[0] | q[1]);
+    for (auto& q : pr) {
+        if (m & q[0]) r |= q[1];
+        if (m & q[1]) r |= q[0];
+    }
+    return r;
+}
+
 // Special (non-game) button codes.
 constexpr uint16_t kToggleKeyboard = 0xFFFF;
 constexpr uint16_t kKbPage = 0xFFFE;
@@ -1299,7 +1325,7 @@ void OpenViewerAtEntry(int entry) {
 
 // Section buttons for the current book: a grid of numbers for the journal,
 // two columns of titles otherwise. Scrolls to keep the focus in view.
-constexpr uint16_t kViewerPageUp = 0xD001, kViewerPageDown = 0xD002;
+constexpr uint16_t kViewerPageUp = 0xD001, kViewerPageDown = 0xD002, kViewerLefty = 0xD003;
 std::vector<Button> ViewerButtons() {
     std::vector<Button> b;
     // Tabs
@@ -1324,6 +1350,7 @@ std::vector<Button> ViewerButtons() {
         sb.selected = i == viewer.section;
         b.push_back(sb);
     }
+    b.push_back({112, 206, 104, 30, kViewerLefty, leftyOn ? "LEFT: ON" : "LEFT: OFF"});
     if (totalRows > rowsVisible) {  // more sections than fit: page buttons
         b.push_back({222, 206, 46, 30, kViewerPageUp, "UP"});
         b.push_back({272, 206, 46, 30, kViewerPageDown, "DOWN"});
@@ -1397,6 +1424,7 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
             if (b->key == kBook) viewer.open = false;
             else if (b->key == kViewerPageUp) viewer.focus = std::max(0, viewer.focus - page);
             else if (b->key == kViewerPageDown) viewer.focus = std::min(n - 1, viewer.focus + page);
+            else if (b->key == kViewerLefty) LeftySet(!leftyOn);
             else if (b->key >= 0xF000) {
                 viewer.book = b->key - 0xF000;
                 viewer.section = viewer.focus = viewer.scroll = 0;
@@ -1429,9 +1457,9 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
     DrawButtons(bottom, buttons, now);
     for (auto& b : buttons)
         if (b.key == 0xE000 + viewer.focus) Frame(bottom, b.x - 2, b.y - 2, b.w + 4, b.h + 4, kWhite);
-    Text(bottom, 4, 208, "Stick: scroll text", kGrey);
-    Text(bottom, 4, 218, "D-Pad+A pick  L/R prev/next", kGrey);
-    Text(bottom, 4, 228, "B or START: close", kGrey);
+    Text(bottom, 4, 208, "Stick: scroll", kGrey);
+    Text(bottom, 4, 218, "D-Pad+A, L/R", kGrey);
+    Text(bottom, 4, 228, "B/START close", kGrey);
 }
 
 // "...READ JOURNAL ENTRY 12..." on the game screen: the entry number, or 0.
@@ -1715,9 +1743,9 @@ int main(int argc, char** argv) {
 
     while (aptMainLoop() && !engineDone && !quit) {
         hidScanInput();
-        u32 down = hidKeysDown();
-        u32 held = hidKeysHeld();
-        u32 released = hidKeysUp();
+        u32 down = RemapKeys(hidKeysDown());
+        u32 held = RemapKeys(hidKeysHeld());
+        u32 released = RemapKeys(hidKeysUp());
         u64 now = osGetTime();
         float depth = osGet3DSliderState();
         if ((depth <= 0.01f) != wideOn) {

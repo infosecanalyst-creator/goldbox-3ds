@@ -25,6 +25,8 @@ ZR: use the touch-screen buttons with the D-Pad. The gold ring moves to the butt
 
 ZL: swap screens, any time. SELECT does the same.
 
+Left hand: open the manual (BOOK) and tap LEFT: OFF / ON at the bottom of its touch screen. The D-Pad and the Y, A, B, X buttons swap jobs: Y is up, A is right, B is down, X is left, and the reverse, so the stylus can be held in the left hand and every control in this manual follows the swap. It is remembered.
+
 Hold START + SELECT for a second: quit.
 
 ## The gold ring
