@@ -394,6 +394,11 @@ void LeftySet(bool on) {
     if (on) { if (FILE* f = std::fopen(kLeftyFile, "wb")) std::fclose(f); }
     else std::remove(kLeftyFile);
 }
+// Left-handed mode swaps the D-pad and A/B/X/Y: hint text names the button the player presses.
+const char* LH(const char* right, const char* left) {
+    if (!leftyLoaded) LeftyLoad();
+    return leftyOn ? left : right;
+}
 u32 RemapKeys(u32 m) {
     static const u32 pr[4][2] = {{KEY_Y, KEY_DUP}, {KEY_A, KEY_DRIGHT}, {KEY_B, KEY_DDOWN}, {KEY_X, KEY_DLEFT}};
     if (!leftyLoaded) LeftyLoad();
@@ -972,7 +977,7 @@ void DrawDashboard(const Surface& top, const Context& cx) {
 
     Fill(top, 16, 190, 368, 1, kBtnEdge);
     Text(top, 16, 196, "Tap a choice on the game screen to pick it", kGrey);
-    Text(top, 16, 208, "D-pad move/choose  A Enter  B Esc  X Yes", kGrey);
+    Text(top, 16, 208, LH("D-pad move/choose  A Enter  B Esc  X Yes", "ABXY move  D-Rt Enter  D-Dn Esc  D-Lt Yes"), kGrey);
     Text(top, 16, 220, "L/R party  C-Stick page  ZR buttons  ZL swap", kGrey);
     if (!ndspOk) Text(top, 16, 180, "No sound: run DSP1 once (dspfirm.cdc)", kRed);
 }
@@ -1092,9 +1097,9 @@ void DrawCombatPanel(const Surface& top, const std::vector<platform::PartyMember
     }
     Fill(top, 16, 190, 368, 1, RGB{160, 60, 60});
     Text(top, 16, 196, "Tap a square to aim, a word to act", kGrey);
-    Text(top, 16, 208, "D-pad/Circle Pad move (diagonals OK)", kGrey);
+    Text(top, 16, 208, LH("D-pad/Circle Pad move (diagonals OK)", "ABXY/Circle Pad move (diagonals OK)"), kGrey);
     Text(top, 16, 220, "Diagonals: L R up, C-Stick down  ZL swap", kGrey);
-    Text(top, 16, 231, "ZR: D-pad to the touch buttons, A presses", kGrey);
+    Text(top, 16, 231, LH("ZR: D-pad to the touch buttons, A presses", "ZR: ABXY to the touch buttons, D-Rt presses"), kGrey);
 }
 
 // ---------------------------------------------------------------------------
@@ -1458,7 +1463,7 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
     for (auto& b : buttons)
         if (b.key == 0xE000 + viewer.focus) Frame(bottom, b.x - 2, b.y - 2, b.w + 4, b.h + 4, kWhite);
     Text(bottom, 4, 208, "Stick: scroll", kGrey);
-    Text(bottom, 4, 218, "D-Pad+A, L/R", kGrey);
+    Text(bottom, 4, 218, LH("D-Pad+A, L/R", "ABXY+Rt, L/R"), kGrey);
     Text(bottom, 4, 228, "B/START close", kGrey);
 }
 
@@ -2244,8 +2249,8 @@ int main(int argc, char** argv) {
                 char info[40];
                 std::snprintf(info, sizeof info, "%d,%d facing %s", cx.map.x, cx.map.y, dirs[(cx.map.dir & 6) / 2]);
                 Text(bottom, 6, 158, info, kGrey);
-                Text(bottom, 6, 172, "L/R party  B back", kGrey);
-                Text(bottom, 6, 184, "ZR+D-Pad: buttons", kGrey);
+                Text(bottom, 6, 172, LH("L/R party  B back", "L/R party Dn back"), kGrey);
+                Text(bottom, 6, 184, LH("ZR+D-Pad: buttons", "ZR+ABXY: buttons"), kGrey);
             }
             DrawButtons(bottom, buttons, now);
         } else {
