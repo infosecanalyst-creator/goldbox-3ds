@@ -452,9 +452,10 @@ std::vector<Button> StripButtons(const std::string& bookLabel = "BOOK") {
     } defs[] = {{"ESC", keys::Escape}, {"YES", (uint16_t)'Y'}, {"NO", (uint16_t)'N'},
                 {"ENTER", keys::Enter}, {"KEYS", kToggleKeyboard}, {"SWAP", kSwap}};
     std::vector<Button> b;
-    int n = 7, gap = 2, w = (320 - gap * (n + 1)) / n;
-    for (int i = 0; i < n - 1; i++) b.push_back({gap + i * (w + gap), 203, w, 34, defs[i].key, defs[i].label});
-    Button book{gap + (n - 1) * (w + gap), 203, w, 34, kBook, bookLabel};
+    // UI rule 11: 4 px apart, 6 px from the screen edges
+    int n = 7, gap = 4, edge = 6, w = (320 - 2 * edge - gap * (n - 1)) / n;
+    for (int i = 0; i < n - 1; i++) b.push_back({edge + i * (w + gap), 202, w, 32, defs[i].key, defs[i].label});
+    Button book{edge + (n - 1) * (w + gap), 202, w, 32, kBook, bookLabel};
     book.selected = bookLabel != "BOOK";  // gold when the game points at a journal entry
     b.push_back(book);
     return b;
@@ -465,7 +466,7 @@ std::vector<Button> KeyboardButtons(bool nameEntry) {
     static const char* letters[] = {"1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"};
     static const char* symbols[] = {"1234567890", "-.,", "", ""};
     const char** rows = keyboardPage == 0 ? letters : symbols;
-    const int kw = 29, kh = 30, gap = 3;
+    const int kw = 27, kh = 30, gap = 4;   // UI rule 11: 4 px apart, 6+ px from the edges
     for (int r = 0; r < 4; r++) {
         int len = (int)std::strlen(rows[r]);
         int x0 = (320 - (len * kw + (len - 1) * gap)) / 2;
@@ -473,19 +474,19 @@ std::vector<Button> KeyboardButtons(bool nameEntry) {
             char c = rows[r][i];
             // '-' as the real IBM key (scan 0x0C, ASCII '-') so text entry keeps it
             uint16_t key = c == '-' ? (uint16_t)0x0C2D : c == '.' ? keys::Period : c == ',' ? keys::Comma : keys::Letter(c);
-            b.push_back({x0 + i * (kw + gap), 8 + r * (kh + gap), kw, kh, key, std::string(1, c)});
+            b.push_back({x0 + i * (kw + gap), 6 + r * (kh + gap), kw, kh, key, std::string(1, c)});
         }
     }
-    int y = 8 + 4 * (kh + gap) + 4;
-    b.push_back({4, y, 60, kh, keys::Escape, "ESC"});
-    b.push_back({68, y, 116, kh, keys::Space, "SPACE"});
-    b.push_back({188, y, 60, kh, keys::Backspace, "BKSP"});
-    b.push_back({252, y, 64, kh, keys::Enter, "ENTER"});
+    int y = 6 + 4 * (kh + gap);
+    b.push_back({6, y, 60, kh, keys::Escape, "ESC"});
+    b.push_back({70, y, 112, kh, keys::Space, "SPACE"});
+    b.push_back({186, y, 60, kh, keys::Backspace, "BKSP"});
+    b.push_back({250, y, 64, kh, keys::Enter, "ENTER"});
     y += kh + gap;
-    b.push_back({4, y, 60, kh, kKbPage, keyboardPage == 0 ? "-.," : "ABC"});
-    if (nameEntry) b.push_back({68, y, 116, kh, kRandomName, "RANDOM"});
-    else b.push_back({68, y, 116, kh, kNumClear, "CLEAR"});
-    b.push_back({188, y, 128, kh, kToggleKeyboard, "HIDE"});
+    b.push_back({6, y, 60, kh, kKbPage, keyboardPage == 0 ? "-.," : "ABC"});
+    if (nameEntry) b.push_back({70, y, 112, kh, kRandomName, "RANDOM"});
+    else b.push_back({70, y, 112, kh, kNumClear, "CLEAR"});
+    b.push_back({186, y, 128, kh, kToggleKeyboard, "HIDE"});
     return b;
 }
 
@@ -500,7 +501,7 @@ std::vector<Button> NumberPadButtons(int maxValue) {
     b.push_back({x0 + kw + gap, y, kw, kh, (uint16_t)'0', "0"});
     b.push_back({x0 + 2 * (kw + gap), y, kw, kh, keys::Backspace, "BKSP"});
     // Right column: ALL / OK / CANCEL
-    int xr = x0 + 3 * (kw + gap) + 4, wr = 320 - xr - 4;
+    int xr = x0 + 3 * (kw + gap) + 4, wr = 320 - xr - 6;
     if (maxValue > 0) b.push_back({xr, y0, wr, kh, kNumAll, "ALL"});
     b.push_back({xr, y0 + (kh + gap), wr, 2 * kh + gap, keys::Enter, "OK"});
     b.push_back({xr, y, wr, kh, keys::Escape, "CANCEL"});
@@ -838,8 +839,8 @@ uint16_t GameTap(int px, int py, const Context& cx, u64 now) {
 // ---------------------------------------------------------------------------
 std::vector<Button> ChoiceButtons(const Context& cx) {
     std::vector<Button> b;
-    const int x0 = 4, w = 312;
-    int y = 4;
+    const int x0 = 6, w = 308;   // UI rule 11: 6 px from the edges, 4 px between buttons
+    int y = 6;
     if (cx.list.active) {
         // Up to 6 entries around the highlight.
         int first = std::max(0, std::min(cx.list.hl - 2, cx.list.rows - 6));
@@ -849,7 +850,7 @@ std::vector<Button> ChoiceButtons(const Context& cx) {
             bt.selected = i == cx.list.hl;
             if (!bt.label.empty()) {
                 b.push_back(bt);
-                y += 27;
+                y += 28;
             }
         }
     } else if (!cx.hot.empty()) {
@@ -859,12 +860,12 @@ std::vector<Button> ChoiceButtons(const Context& cx) {
                 Button bt{x0, y, w, 24, cx.hot[i].key, cx.hot[i].label};
                 bt.selected = i == hotFocus;
                 b.push_back(bt);
-                y += 27;
+                y += 28;
             }
         } else {  // up to 12 lines (the start menu) in two columns
             int bw = (w - 4) / 2, rows = (std::min(n, 12) + 1) / 2;
             for (int i = 0; i < n && i < 12; i++) {
-                Button bt{x0 + (i / rows) * (bw + 4), y + (i % rows) * 30, bw, 27, cx.hot[i].key, cx.hot[i].label};
+                Button bt{x0 + (i / rows) * (bw + 4), y + (i % rows) * 30, bw, 26, cx.hot[i].key, cx.hot[i].label};
                 bt.selected = i == hotFocus;
                 b.push_back(bt);
             }
@@ -889,11 +890,11 @@ std::vector<Button> ChoiceButtons(const Context& cx) {
     if (cx.rosterVisible && !cx.list.active && y + 24 <= 200) {
         int bw = (w - 4) / 2;
         for (int i = 0; i < cx.roster.count && y + 24 <= 200; i++) {
-            Button bt{x0 + (i % 2) * (bw + 4), y, bw, 22, 0, MemberName(cx.roster, i)};
+            Button bt{x0 + (i % 2) * (bw + 4), y, bw, 24, 0, MemberName(cx.roster, i)};
             bt.member = i;
             bt.selected = i == cx.roster.selected;
             b.push_back(bt);
-            if (i % 2 == 1 || i == cx.roster.count - 1) y += 25;
+            if (i % 2 == 1 || i == cx.roster.count - 1) y += 28;
         }
     }
     if (b.empty() && (cx.items.empty() || MenuSaysContinue(cx.prompt, cx.items)))
@@ -1028,12 +1029,12 @@ bool ExplorePanelWanted(const Context& cx, const MapState& m) {
 // Explore layout: automap on the left, the menu words as a column on the right.
 std::vector<Button> ExploreButtons(const Context& cx) {
     std::vector<Button> b;
-    int x = 158, w = 158, y = 4, n = (int)cx.words.size();
+    int x = 160, w = 154, y = 6, n = (int)cx.words.size();   // UI rule 11: 6 px from the edges
     if (MenuSaysContinue(cx.prompt, cx.items)) {  // "press <enter>/<return> to continue"
         b.push_back({x, 4, w, 60, keys::Enter, "CONTINUE"});
         return b;
     }
-    int h = n > 6 ? 20 : 24, gap = n > 6 ? 2 : 3;
+    int h = 24, gap = n > 6 ? 3 : 4;   // 7 words only fit with 3 px gaps
     for (int i = 0; i < n && y + h <= 198; i++) {
         b.push_back({x, y, w, h, keys::Letter(cx.words[i].key), cx.words[i].label});
         y += h + gap;
@@ -1047,10 +1048,12 @@ std::vector<Button> ExploreButtons(const Context& cx) {
 // words (Move, View, Aim, Use, Cast ...) as big buttons, plus ESC.
 std::vector<Button> CombatStrip(const Context& cx) {
     std::vector<Button> b;
-    int n = std::min<int>((int)cx.words.size(), 7) + 1, gap = 2, w = (320 - gap * (n + 1)) / n;
+    // UI rule 11: 4 px apart and 6 px from the edges; with 8 buttons, 3 and 5 so 5-letter words still fit
+    int n = std::min<int>((int)cx.words.size(), 7) + 1, gap = n > 7 ? 3 : 4, edge = n > 7 ? 5 : 6;
+    int w = (320 - 2 * edge - gap * (n - 1)) / n;
     for (int i = 0; i < n - 1; i++)
-        b.push_back({gap + i * (w + gap), 203, w, 34, keys::Letter(cx.words[i].key), cx.words[i].label});
-    b.push_back({gap + (n - 1) * (w + gap), 203, w, 34, keys::Escape, "ESC"});
+        b.push_back({edge + i * (w + gap), 202, w, 32, keys::Letter(cx.words[i].key), cx.words[i].label});
+    b.push_back({edge + (n - 1) * (w + gap), 202, w, 32, keys::Escape, "ESC"});
     return b;
 }
 
@@ -1334,31 +1337,32 @@ constexpr uint16_t kViewerPageUp = 0xD001, kViewerPageDown = 0xD002, kViewerLeft
 std::vector<Button> ViewerButtons() {
     std::vector<Button> b;
     // Tabs
-    int nb = (int)books.size(), gap = 2, cw = 50, tw = (320 - cw - gap * (nb + 2)) / std::max(1, nb);
+    // UI rule 11: 24+ px tall, 4 px apart, 6 px from the edges
+    int nb = (int)books.size(), gap = 4, edge = 6, cw = 50, tw = (320 - 2 * edge - cw - gap * nb) / std::max(1, nb);
     for (int i = 0; i < nb; i++) {
-        Button t{gap + i * (tw + gap), 2, tw, 24, (uint16_t)(0xF000 + i), books[i].tab};
+        Button t{edge + i * (tw + gap), 6, tw, 24, (uint16_t)(0xF000 + i), books[i].tab};
         t.selected = i == viewer.book;
         b.push_back(t);
     }
-    b.push_back({320 - gap - cw, 2, cw, 24, kBook, "CLOSE"});
+    b.push_back({320 - edge - cw, 6, cw, 24, kBook, "CLOSE"});
     if (books.empty()) return b;
     const Book& bk = books[viewer.book];
     int n = (int)bk.sections.size();
     bool grid = IsJournal(bk);
-    int cols = grid ? 8 : 2, bw = grid ? 37 : 155, bh = grid ? 20 : 22, rowsVisible = grid ? 7 : 7;
+    int cols = grid ? 8 : 2, bw = grid ? 35 : 152, bh = 24, rowsVisible = 6;
     int focusRow = viewer.focus / cols, firstRow = std::max(0, focusRow - rowsVisible / 2);
     int totalRows = (n + cols - 1) / cols;
     firstRow = std::max(0, std::min(firstRow, totalRows - rowsVisible));
     for (int i = firstRow * cols; i < n && i < (firstRow + rowsVisible) * cols; i++) {
         int r = i / cols - firstRow, c = i % cols;
-        Button sb{4 + c * (bw + 2), 30 + r * (bh + 2), bw, bh, (uint16_t)(0xE000 + i), SectionLabel(bk, bk.sections[i])};
+        Button sb{6 + c * (bw + 4), 34 + r * (bh + 4), bw, bh, (uint16_t)(0xE000 + i), SectionLabel(bk, bk.sections[i])};
         sb.selected = i == viewer.section;
         b.push_back(sb);
     }
-    b.push_back({112, 206, 104, 30, kViewerLefty, leftyOn ? "LEFT: ON" : "LEFT: OFF"});
+    b.push_back({112, 206, 102, 28, kViewerLefty, leftyOn ? "LEFT: ON" : "LEFT: OFF"});
     if (totalRows > rowsVisible) {  // more sections than fit: page buttons
-        b.push_back({222, 206, 46, 30, kViewerPageUp, "UP"});
-        b.push_back({272, 206, 46, 30, kViewerPageDown, "DOWN"});
+        b.push_back({218, 206, 46, 28, kViewerPageUp, "UP"});
+        b.push_back({268, 206, 46, 28, kViewerPageDown, "DOWN"});
     }
     return b;
 }
@@ -1431,7 +1435,7 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
             flashKey = b->key;
             flashRow = flashMember = -1;
             flashUntil = now + 150;
-            int page = (IsJournal(bk) ? 8 : 2) * 7;
+            int page = (IsJournal(bk) ? 8 : 2) * 6;   // one screen of section buttons (6 rows)
             if (b->key == kBook) viewer.open = false;
             else if (b->key == kViewerPageUp) viewer.focus = std::max(0, viewer.focus - page);
             else if (b->key == kViewerPageDown) viewer.focus = std::min(n - 1, viewer.focus + page);
