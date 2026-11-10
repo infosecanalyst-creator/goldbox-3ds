@@ -1373,7 +1373,7 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
     Book& bk = books[viewer.book];
     int n = (int)bk.sections.size();
     viewer.section = std::max(0, std::min(viewer.section, n - 1));
-    viewer.focus = std::max(0, std::min(viewer.focus, n - 1));
+    viewer.focus = std::max(0, std::min(viewer.focus, n));   // n = the LEFT hand button
     auto openSection = [&](int i) {
         viewer.section = viewer.focus = std::max(0, std::min(i, n - 1));
         viewer.scroll = 0;
@@ -1394,7 +1394,10 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
     }
     if (down & KEY_L) openSection(viewer.section - 1);
     if (down & KEY_R) openSection(viewer.section + 1);
-    if (down & KEY_A) openSection(viewer.focus);
+    if (down & KEY_A) {
+        if (viewer.focus == n) { PlayClick(); flashKey = kViewerLefty; flashRow = flashMember = -1; flashUntil = now + 150; LeftySet(!leftyOn); }
+        else openSection(viewer.focus);
+    }
     // D-Pad: move the focus between section buttons (repeat when held).
     int cols = IsJournal(bk) ? 8 : 2, df = 0;
     if (held & KEY_DUP) df = -cols;
@@ -1402,7 +1405,10 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
     else if (held & KEY_DLEFT) df = -1;
     else if (held & KEY_DRIGHT) df = 1;
     if (df && ((down & (KEY_DUP | KEY_DDOWN | KEY_DLEFT | KEY_DRIGHT)) || now >= viewer.nextFocus)) {
-        viewer.focus = std::max(0, std::min(viewer.focus + df, n - 1));
+        // the LEFT hand button sits below the sections: down from the last row reaches it, up leaves it
+        if (viewer.focus == n) viewer.focus = df < 0 ? n - 1 : n;
+        else if (viewer.focus + df > n - 1 && df == cols) viewer.focus = n;
+        else viewer.focus = std::max(0, std::min(viewer.focus + df, n - 1));
         viewer.nextFocus = now + ((down & (KEY_DUP | KEY_DDOWN | KEY_DLEFT | KEY_DRIGHT)) ? 350 : 110);
     }
     // Circle Pad / C-Stick: scroll the text (repeat when held).
@@ -1461,10 +1467,10 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
     Fill(bottom, 0, 0, 320, 240, kDash);
     DrawButtons(bottom, buttons, now);
     for (auto& b : buttons)
-        if (b.key == 0xE000 + viewer.focus) Frame(bottom, b.x - 2, b.y - 2, b.w + 4, b.h + 4, kWhite);
+        if (b.key == 0xE000 + viewer.focus || (viewer.focus == n && b.key == kViewerLefty)) Frame(bottom, b.x - 2, b.y - 2, b.w + 4, b.h + 4, kWhite);
     Text(bottom, 4, 208, "Stick: scroll", kGrey);
     Text(bottom, 4, 218, LH("D-Pad+A, L/R", "ABXY+Rt, L/R"), kGrey);
-    Text(bottom, 4, 228, "B/START close", kGrey);
+    Text(bottom, 4, 228, LH("B/START close", "Dn/START close"), kGrey);
 }
 
 // "...READ JOURNAL ENTRY 12..." on the game screen: the entry number, or 0.
