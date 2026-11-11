@@ -519,7 +519,9 @@ void DrawButtons(const Surface& s, const std::vector<Button>& bs, u64 now) {
         int press = lit ? 1 : 0;  // label sinks while pressed
         std::string label = b.label;
         RGB tc = lit ? kBlack : b.selected ? kGold : kWhite;
-        int maxChars = std::max(1, (b.w - 4) / 8);
+        // Keep at least 4 px between the label and the button frame (labels like
+        // "Journal" in a 60-px tab used to touch it); longer ones go narrow or wrap.
+        int maxChars = std::max(1, (b.w - 8) / 8);
         if ((int)label.size() > maxChars && (int)label.size() * 7 <= b.w - 2 && label.find(' ') == std::string::npos) {
             int w7 = (int)label.size() * 7 - 1;
             TextNarrow(s, b.x + (b.w - w7) / 2, b.y + (b.h - 8) / 2 + press, label, tc);
