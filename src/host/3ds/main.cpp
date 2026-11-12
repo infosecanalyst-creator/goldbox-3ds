@@ -6,7 +6,7 @@
 //    the game's current choices as large buttons.
 //  * Combat: the game on the touch screen (tap to aim), the combat menu as
 //    big buttons underneath, and a combat panel (party HP) on top.
-//  SELECT / SWAP flips the automatic choice until combat starts or ends.
+//  ZL / SWAP flips the automatic choice until combat starts or ends.
 // A keyboard opens by itself when the game wants text (names, riddles) and a
 // number pad when it asks "How much..."; KEYS opens the keyboard any time.
 //
@@ -15,12 +15,12 @@
 // the engine is unchanged (it still matches coab byte for byte in the tests).
 //
 // Controls: D-pad / Circle Pad = move (8 ways in combat), or move the
-//           highlight in menus and lists; A/START = Enter; B = Esc; X = Yes;
+//           highlight in menus and lists; A = Enter; B = Esc; X = Yes;
 //           Y = Space (Backspace while typing); L/R = previous/next party
 //           member (combat: diagonals with L/R and the C-Stick; "Aim:" previous/next
-//           target); C-Stick up/down = page up/down in lists; ZL or
-//           SELECT = swap screens; ZR = the D-pad drives the touch buttons
-//           (gold ring, A presses); hold START+SELECT = quit.
+//           target); C-Stick up/down = page up/down in lists;
+//           ZL = swap screens; ZR = the D-pad drives the touch buttons
+//           (gold ring, A presses); START = menu (Resume, Manual, Journal, Exit).
 // Top screen: 800x240 wide mode with the 3D slider down (crisper), the two
 // 3D eyes with it up. The game on top always fills the whole screen.
 //
@@ -439,7 +439,7 @@ bool keyboardOpen = false;
 bool keyboardAuto = false;  // opened by an entry hint (closes with it)
 int keyboardPage = 0;       // 0 = letters, 1 = digits/symbols
 bool swapped = false;   // this frame: game on the top screen
-bool userFlip = false;  // SELECT / SWAP: flip the automatic choice
+bool userFlip = false;  // ZL / SWAP: flip the automatic choice
 uint16_t flashKey = 0;  // last pressed button, drawn highlighted briefly
 int flashRow = -1, flashMember = -1;
 u64 flashUntil = 0;
@@ -940,11 +940,12 @@ std::vector<Button> ChoiceButtonsRaw(const Context& cx) {
 // Screens
 // ---------------------------------------------------------------------------
 void DrawDashboard(const Surface& top, const Context& cx) {
+    // House style: a 22 px header bar with the game's name in gold.
     Fill(top, 0, 0, 400, 240, kDash);
-    Text(top, (400 - TextWidth("Gold Box 3DS", 2)) / 2, 6, "Gold Box 3DS", kGold, 2);
-    Fill(top, 16, 26, 368, 1, kBtnEdge);
+    Fill(top, 0, 0, 400, 22, kBtn);
+    Text(top, 8, 7, "CURSE OF THE AZURE BONDS", kGold);
 
-    int y = 32;
+    int y = 30;
     std::string p = cx.prompt;
     while (!p.empty() && p.back() == ' ') p.pop_back();
     if (!p.empty()) {
@@ -1010,11 +1011,14 @@ void DrawDashboard(const Surface& top, const Context& cx) {
         }
     }
 
-    Fill(top, 16, 190, 368, 1, kBtnEdge);
-    Text(top, 16, 196, "Tap a choice on the game screen to pick it", kGrey);
-    Text(top, 16, 208, LH("D-pad move/choose  A Enter  B Esc  X Yes", "ABXY move  D-Rt Enter  D-Dn Esc  D-Lt Yes"), kGrey);
-    Text(top, 16, 220, "L/R party  C-Stick page  ZR buttons  ZL swap", kGrey);
-    if (!ndspOk) Text(top, 16, 180, "No sound: run DSP1 once (dspfirm.cdc)", kRed);
+    Fill(top, 16, 194, 368, 1, kBtnEdge);
+    Text(top, 16, 199, "Tap a choice on the game screen to pick it", kGrey);
+    Text(top, 16, 211, LH("D-pad move/choose  A Enter  B Esc  X Yes", "ABXY move  D-Rt Enter  D-Dn Esc  D-Lt Yes"), kGrey);
+    // House style: the hint strip, 16 px at the bottom, gold.
+    Fill(top, 0, 224, 400, 16, RGB{20, 30, 70});
+    const std::string strip = "START menu  ZL swap  ZR buttons  L/R party";
+    Text(top, (400 - TextWidth(strip)) / 2, 228, strip, kGold);
+    if (!ndspOk) Text(top, 16, 183, "No sound: run DSP1 once (dspfirm.cdc)", kRed);
 }
 
 // ---------------------------------------------------------------------------
@@ -1114,12 +1118,14 @@ int GameFocus(const std::vector<Button>& bs, const Context& cx, bool hotMenu, in
 // Combat panel (top screen while the game is on the touch screen in combat)
 // ---------------------------------------------------------------------------
 void DrawCombatPanel(const Surface& top, const std::vector<platform::PartyMember>& party) {
-    Fill(top, 0, 0, 400, 240, RGB{24, 6, 10});
-    Text(top, (400 - TextWidth("Combat", 2)) / 2, 6, "Combat", kRed, 2);
-    Fill(top, 16, 26, 368, 1, RGB{160, 60, 60});
-    int y = 34;
+    // House style: navy screen and header bar; "COMBAT" in red with a word, not colour alone.
+    Fill(top, 0, 0, 400, 240, kDash);
+    Fill(top, 0, 0, 400, 22, kBtn);
+    Text(top, 8, 7, "CURSE OF THE AZURE BONDS", kGold);
+    Text(top, 392 - TextWidth("COMBAT"), 7, "COMBAT", kRed);
+    int y = 30;
     for (auto& m : party) {
-        if (y > 176) break;
+        if (y > 150) break;   // rows end above the help lines at 176
         bool down = m.hp <= 0;
         RGB name = m.active ? kGold : down ? kGrey : kWhite;
         std::string n = m.name.substr(0, 12);
@@ -1134,12 +1140,15 @@ void DrawCombatPanel(const Surface& top, const std::vector<platform::PartyMember
         TextFit(top, 236, y + 13, 156, "AC " + std::to_string(m.ac) + (m.status.empty() || m.status == "Okay" ? "" : "  " + m.status), kGrey, false);
         y += party.size() > 6 ? 19 : 26;
     }
-    // Four help lines, the last one ending 6 px above the screen edge (descenders were clipped at y 231).
-    Fill(top, 16, 186, 368, 1, RGB{160, 60, 60});
-    Text(top, 16, 191, "Tap a square to aim, a word to act", kGrey);
-    Text(top, 16, 202, LH("D-pad/Circle Pad move (diagonals OK)", "ABXY/Circle Pad move (diagonals OK)"), kGrey);
-    Text(top, 16, 213, "Diagonals: L R up, C-Stick down  ZL swap", kGrey);
-    Text(top, 16, 224, LH("ZR: D-pad to the touch buttons, A presses", "ZR: ABXY to the touch buttons, D-Rt presses"), kGrey);
+    // Help lines, then the house-style hint strip at the bottom.
+    Fill(top, 16, 176, 368, 1, kBtnEdge);
+    Text(top, 16, 180, "Tap a square to aim, a word to act", kGrey);
+    Text(top, 16, 191, LH("D-pad/Circle Pad move (diagonals OK)", "ABXY/Circle Pad move (diagonals OK)"), kGrey);
+    Text(top, 16, 202, "Diagonals: L R up, C-Stick down", kGrey);
+    Text(top, 16, 213, LH("ZR: D-pad to the touch buttons, A presses", "ZR: ABXY to the touch buttons, D-Rt presses"), kGrey);
+    Fill(top, 0, 224, 400, 16, RGB{20, 30, 70});
+    const std::string strip = "START menu  ZL swap  ZR buttons";
+    Text(top, (400 - TextWidth(strip)) / 2, 228, strip, kGold);
 }
 
 // ---------------------------------------------------------------------------
@@ -1695,6 +1704,111 @@ void EngineStopped() { engineDone = true; }
 
 }  // namespace platform
 
+// ---------------------------------------------------------------------------
+// START menu (house style, same in every port): RESUME, MANUAL, JOURNAL,
+// EXIT GAME (asks first). B or START closes it. D-Pad + A or touch.
+// ---------------------------------------------------------------------------
+struct PortMenu {
+    bool open = false;
+    bool confirm = false;  // "Exit the game?" showing
+    int focus = 0;
+    u64 nextMove = 0;
+} portMenu;
+constexpr uint16_t kMenuResume = 0xC001, kMenuManual = 0xC002, kMenuJournal = 0xC003, kMenuExit = 0xC004,
+                   kMenuYes = 0xC005, kMenuNo = 0xC006;
+
+std::vector<Button> PortMenuButtons() {
+    std::vector<Button> b;
+    if (portMenu.confirm) {
+        b.push_back({6, 120, 152, 74, kMenuYes, "YES, EXIT"});
+        b.push_back({162, 120, 152, 74, kMenuNo, "NO"});
+        return b;
+    }
+    // Four big rows filling the screen (6 px edges, 4 px gaps).
+    const char* labels[4] = {"RESUME", "MANUAL", "JOURNAL", "EXIT GAME"};
+    uint16_t keys4[4] = {kMenuResume, kMenuManual, kMenuJournal, kMenuExit};
+    int h = (240 - 12 - 3 * 4) / 4;
+    for (int i = 0; i < 4; i++) b.push_back({6, 6 + i * (h + 4), 308, h, keys4[i], labels[i]});
+    return b;
+}
+
+// Returns true when the player chose to exit the game.
+bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface& bottom) {
+    std::vector<Button> bs = PortMenuButtons();
+    int n = (int)bs.size();
+    portMenu.focus = std::max(0, std::min(portMenu.focus, n - 1));
+    const Button* pressed = nullptr;
+    if (down & (KEY_B | KEY_START)) {
+        if (portMenu.confirm) portMenu.confirm = false, portMenu.focus = 3;
+        else portMenu.open = false;
+        PlayClick();
+        return false;
+    }
+    int d = 0;
+    if (held & (KEY_DUP | KEY_DLEFT)) d = -1;
+    else if (held & (KEY_DDOWN | KEY_DRIGHT)) d = 1;
+    if (d && ((down & (KEY_DUP | KEY_DDOWN | KEY_DLEFT | KEY_DRIGHT)) || now >= portMenu.nextMove)) {
+        portMenu.focus = (portMenu.focus + d + n) % n;
+        portMenu.nextMove = now + ((down & (KEY_DUP | KEY_DDOWN | KEY_DLEFT | KEY_DRIGHT)) ? 350 : 120);
+    }
+    if (down & KEY_A) pressed = &bs[portMenu.focus];
+    if (down & KEY_TOUCH) {
+        touchPosition t;
+        hidTouchRead(&t);
+        pressed = ButtonAt(bs, t.px, t.py);
+    }
+    bool exitGame = false;
+    if (pressed) {
+        PlayClick();
+        flashKey = pressed->key;
+        flashRow = flashMember = -1;
+        flashUntil = now + 150;
+        switch (pressed->key) {
+            case kMenuResume: portMenu.open = false; break;
+            case kMenuManual:
+            case kMenuJournal: {
+                portMenu.open = false;
+                if (books.empty()) LoadBooks();
+                for (size_t i = 0; i < books.size(); i++)
+                    if (IsJournal(books[i]) == (pressed->key == kMenuJournal)) { viewer.book = (int)i; viewer.section = viewer.focus = 0; break; }
+                viewer.open = true;
+                viewer.scroll = 0;
+                break;
+            }
+            case kMenuExit: portMenu.confirm = true; portMenu.focus = 1; break;   // the ring starts on NO
+            case kMenuYes: exitGame = true; break;
+            case kMenuNo: portMenu.confirm = false; portMenu.focus = 3; break;
+        }
+    }
+
+    // Top: header bar, then what the menu does (house style).
+    Fill(top, 0, 0, 400, 240, kDash);
+    Fill(top, 0, 0, 400, 22, kBtn);
+    Text(top, 8, 7, "CURSE OF THE AZURE BONDS", kGold);
+    Text(top, 392 - TextWidth("PAUSED"), 7, "PAUSED", kGrey);
+    if (portMenu.confirm) {
+        Text(top, 16, 60, "Exit the game?", kWhite, 2);
+        Text(top, 16, 100, "Progress since your last save is lost.", kGrey);
+        Text(top, 16, 116, "Save first from the game's own menu", kGrey);
+        Text(top, 16, 128, "(Encamp, then Save) if you want to keep it.", kGrey);
+    } else {
+        Text(top, 16, 40, "RESUME     back to the game", kWhite);
+        Text(top, 16, 60, "MANUAL     how to play on the 3DS", kWhite);
+        Text(top, 16, 80, "JOURNAL    the Adventurer's Journal", kWhite);
+        Text(top, 16, 100, "EXIT GAME  back to the Homebrew Menu", kWhite);
+        Text(top, 16, 130, "Save from the game itself: Encamp, then Save.", kGrey);
+    }
+    Fill(top, 0, 224, 400, 16, RGB{20, 30, 70});
+    std::string hint = LH("D-pad choose   A select   B or START close", "ABXY choose   D-Rt select   D-Dn or START close");
+    Text(top, (400 - TextWidth(hint)) / 2, 228, hint, kGold);
+
+    Fill(bottom, 0, 0, 320, 240, kDash);
+    if (portMenu.confirm) Text(bottom, (320 - TextWidth("Exit the game?")) / 2, 80, "Exit the game?", kWhite);
+    DrawButtons(bottom, bs, now);
+    DrawRing(bottom, bs[portMenu.focus]);
+    return exitGame;
+}
+
 int main(int argc, char** argv) {
     osSetSpeedupEnable(true);  // New 3DS: 804 MHz + L2 cache
     gfxInitDefault();
@@ -1776,13 +1890,11 @@ int main(int argc, char** argv) {
     bool quit = false;
     int journalEntry = 0;
     u64 journalSeenAt = 0;
-    u64 quitSince = 0;
     std::vector<platform::MenuItem> lastItems;
     std::string lastPrompt;
     bool lastAccepts = true;
     u64 lastMenuAt = 0;
     int mapLeftVersion = -1;
-    bool startUsedForCombo = false;
     bool lastCombat = false;
     int lastMapX = -1, lastMapY = -1, lastMapDir = -1, lastMapBlock = -1;
     u64 lastSave = 0;
@@ -1841,7 +1953,7 @@ int main(int argc, char** argv) {
         if (cx.state != kStateDungeon) mapLeftVersion = cx.map.version;
         if (cx.map.version == mapLeftVersion) cx.map.valid = false;
         // Automatic layout: the game on the top screen while exploring and in
-        // menus, on the touch screen in combat (stylus aiming). SELECT/SWAP
+        // menus, on the touch screen in combat (stylus aiming). ZL/SWAP
         // flips it until combat starts or ends.
         if (combat != lastCombat) {
             userFlip = false;
@@ -1925,6 +2037,19 @@ int main(int argc, char** argv) {
         if (cx.state == kStateDungeon)
             for (auto& it : cx.items) explore3d |= it.label == "Area";
 
+        // The START menu takes over both screens and all input while open.
+        if (portMenu.open) {
+            u16 mw, mh;
+            Surface mtop{gfxGetFramebuffer(GFX_TOP, GFX_LEFT, &mw, &mh), 400, wideOn};
+            Surface mbottom{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &mw, &mh), 320};
+            if (PortMenuFrame(down, held, now, mtop, mbottom)) quit = true;
+            if (!wideOn) std::memcpy(gfxGetFramebuffer(GFX_TOP, GFX_RIGHT, &mw, &mh), mtop.fb, 400 * 240 * 3);
+            gfxFlushBuffers();
+            gfxSwapBuffers();
+            gspWaitForVBlank();
+            if (quit) break;
+            continue;
+        }
         // The book takes over both screens and all input while open.
         if (viewer.open) {
             u16 vw, vh;
@@ -1948,15 +2073,15 @@ int main(int argc, char** argv) {
         }
 
         // ---- buttons ----
-        // Quit: hold START+SELECT for a second (a warning shows meanwhile).
-        if ((held & KEY_START) && (held & KEY_SELECT)) {
-            if (!quitSince) quitSince = now;
-            if (now >= quitSince + 1000) quit = true;
-            startUsedForCombo = true;
-        } else {
-            quitSince = 0;
+        // START: the port menu (house style). ZL alone swaps the screens.
+        if ((down & KEY_START) && !overlay) {
+            portMenu.open = true;
+            portMenu.confirm = false;
+            portMenu.focus = 0;
+            PlayClick();
+            continue;
         }
-        if (((down & KEY_SELECT) && !(held & KEY_START)) || (down & KEY_ZL)) {   // SELECT or ZL
+        if (down & KEY_ZL) {
             userFlip = !userFlip;
             swapped = !swapped;
         }
@@ -1976,9 +2101,8 @@ int main(int argc, char** argv) {
         } else if (down & KEY_A) {
             host::PushKey(hotMenu ? cx.hot[hotFocus].key : keys::Enter);
         }
-        // START = Enter on release, unless it was part of START+SELECT.
-        if (down & KEY_START) startUsedForCombo = (held & KEY_SELECT) != 0;
-        if ((released & KEY_START) && !startUsedForCombo) host::PushKey(keys::Enter);
+        // START = Enter while typing a name (the keyboard or number pad is open).
+        if (overlay && (down & KEY_START)) host::PushKey(keys::Enter);
         if (down & KEY_B) host::PushKey(keys::Escape);
         if (cx.entry == 1 || cx.entry == 2) {
             if (down & KEY_Y) host::PushKey(keys::Backspace);  // typing: Y deletes, X does nothing
@@ -2312,15 +2436,10 @@ int main(int argc, char** argv) {
             DrawButtons(bottom, buttons, now);
         }
 
-        if (quitSince) {  // holding START+SELECT
-            Fill(bottom, 40, 90, 240, 50, kRed);
-            Text(bottom, 60, 104, "Keep holding START+SELECT", kWhite);
-            Text(bottom, 60, 120, "to quit (saves nothing)", kWhite);
-        }
         // The ring: on the button the D-Pad drives, or on the game's highlight.
         {
             int ring = navActive ? navFocus : gameFocus;
-            if (ring >= 0 && ring < (int)buttons.size() && !quitSince) DrawRing(bottom, buttons[ring]);
+            if (ring >= 0 && ring < (int)buttons.size()) DrawRing(bottom, buttons[ring]);
         }
         if (!topDone && !top.wide) std::memcpy(topR.fb, top.fb, 400 * 240 * 3);
 

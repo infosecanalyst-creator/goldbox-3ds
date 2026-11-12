@@ -2,12 +2,14 @@
 ## Quick start
 Everything can be done with the stylus or the buttons; the keyboard only opens by itself when the game wants you to type (names, riddle answers).
 
-Outside combat the game is on the top screen and the touch screen shows big buttons for whatever the game is asking. In combat the game moves to the touch screen so you can tap to aim. ZL (or SELECT, or SWAP) flips the screens any time.
+Outside combat the game is on the top screen and the touch screen shows big buttons for whatever the game is asking. In combat the game moves to the touch screen so you can tap to aim. ZL (or the SWAP button) flips the screens any time.
 
 Every touch button also works with the buttons: a gold ring shows the button A will press.
 
 ## Buttons
-A or START: Enter (pick the highlighted choice).
+A: Enter (pick the highlighted choice).
+
+START: the menu: Resume, Manual, Journal and Exit Game (it asks first; save from the game itself: Encamp, then Save).
 
 B: Esc (back out).
 
@@ -23,11 +25,10 @@ C-Stick up / down: page up / down in long lists.
 
 ZR: use the touch-screen buttons with the D-Pad. The gold ring moves to the buttons (ESC, YES, NO, ENTER, KEYS, SWAP, BOOK and the game's choices); the D-Pad moves it, A presses the ringed button. B or ZR goes back without pressing anything. After a press the D-Pad walks again.
 
-ZL: swap screens, any time. SELECT does the same.
+ZL: swap screens, any time.
 
 Left hand: open the manual (BOOK) and tap LEFT: OFF / ON at the bottom of its touch screen. The D-Pad and the Y, A, B, X buttons swap jobs: Y is up, A is right, B is down, X is left, and the reverse, so the stylus can be held in the left hand and every control in this manual follows the swap. It is remembered.
 
-Hold START + SELECT for a second: quit.
 
 ## The gold ring
 In menus and lists the D-Pad moves the game's highlight, and the gold ring sits on the matching big button; A presses it (it lights up and clicks, as a tap would).
