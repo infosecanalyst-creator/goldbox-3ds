@@ -839,7 +839,30 @@ uint16_t GameTap(int px, int py, const Context& cx, u64 now) {
 // ---------------------------------------------------------------------------
 // The swapped layout: the game's choices as large buttons.
 // ---------------------------------------------------------------------------
-std::vector<Button> ChoiceButtons(const Context& cx) {
+// Screen-fill rule: the choice panel (y 6..198, above the button strip) is always
+// filled. Rows of buttons grow taller, evenly, until they reach the strip, so a
+// lone CONTINUE or a two-word menu never leaves an empty band on the touch screen.
+std::vector<Button> FillPanel(std::vector<Button> b, int top = 6, int bottom = 198) {
+    if (b.empty()) return b;
+    std::vector<int> ys;
+    for (auto& bt : b) if (std::find(ys.begin(), ys.end(), bt.y) == ys.end()) ys.push_back(bt.y);
+    std::sort(ys.begin(), ys.end());
+    int rows = (int)ys.size(), gap = 4;
+    int rowH = (bottom - top - gap * (rows - 1)) / rows;
+    int maxH = 0;
+    for (auto& bt : b) maxH = std::max(maxH, bt.h);
+    if (rowH <= maxH) return b;
+    for (auto& bt : b) {
+        int r = (int)(std::find(ys.begin(), ys.end(), bt.y) - ys.begin());
+        bt.y = top + r * (rowH + gap);
+        bt.h = rowH;
+    }
+    return b;
+}
+
+std::vector<Button> ChoiceButtonsRaw(const Context& cx);
+std::vector<Button> ChoiceButtons(const Context& cx) { return FillPanel(ChoiceButtonsRaw(cx)); }
+std::vector<Button> ChoiceButtonsRaw(const Context& cx) {
     std::vector<Button> b;
     const int x0 = 6, w = 308;   // UI rule 11: 6 px from the edges, 4 px between buttons
     int y = 6;
@@ -880,7 +903,8 @@ std::vector<Button> ChoiceButtons(const Context& cx) {
     }
     // Menu words: up to 4 per row.
     if (!cx.words.empty() && y < 170) {
-        int n = (int)cx.words.size(), perRow = std::min(4, n);
+        // A short menu on its own (Play / Demo) is a column of big buttons; otherwise up to 4 per row.
+        int n = (int)cx.words.size(), perRow = (n <= 4 && b.empty() && !cx.rosterVisible) ? 1 : std::min(4, n);
         int bw = (w - (perRow - 1) * 4) / perRow;
         for (int i = 0; i < n && y + 28 <= 200; i++) {
             int col = i % perRow;
@@ -1029,7 +1053,9 @@ bool ExplorePanelWanted(const Context& cx, const MapState& m) {
 }
 
 // Explore layout: automap on the left, the menu words as a column on the right.
-std::vector<Button> ExploreButtons(const Context& cx) {
+std::vector<Button> ExploreButtonsRaw(const Context& cx);
+std::vector<Button> ExploreButtons(const Context& cx) { return FillPanel(ExploreButtonsRaw(cx)); }
+std::vector<Button> ExploreButtonsRaw(const Context& cx) {
     std::vector<Button> b;
     int x = 160, w = 154, y = 6, n = (int)cx.words.size();   // UI rule 11: 6 px from the edges
     if (MenuSaysContinue(cx.prompt, cx.items)) {  // "press <enter>/<return> to continue"
