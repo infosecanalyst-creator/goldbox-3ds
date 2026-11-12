@@ -1720,8 +1720,8 @@ constexpr uint16_t kMenuResume = 0xC001, kMenuManual = 0xC002, kMenuJournal = 0x
 std::vector<Button> PortMenuButtons() {
     std::vector<Button> b;
     if (portMenu.confirm) {
-        b.push_back({6, 120, 152, 74, kMenuYes, "YES, EXIT"});
-        b.push_back({162, 120, 152, 74, kMenuNo, "NO"});
+        b.push_back({6, 100, 152, 134, kMenuYes, "YES, EXIT"});   // fill the screen below the question
+        b.push_back({162, 100, 152, 134, kMenuNo, "NO"});
         return b;
     }
     // Four big rows filling the screen (6 px edges, 4 px gaps).
@@ -1803,7 +1803,10 @@ bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surfac
     Text(top, (400 - TextWidth(hint)) / 2, 228, hint, kGold);
 
     Fill(bottom, 0, 0, 320, 240, kDash);
-    if (portMenu.confirm) Text(bottom, (320 - TextWidth("Exit the game?")) / 2, 80, "Exit the game?", kWhite);
+    if (portMenu.confirm) {
+        Text(bottom, (320 - TextWidth("Exit the game?", 2)) / 2, 30, "Exit the game?", kWhite, 2);
+        Text(bottom, (320 - TextWidth("Unsaved progress is lost.")) / 2, 64, "Unsaved progress is lost.", kGrey);
+    }
     DrawButtons(bottom, bs, now);
     DrawRing(bottom, bs[portMenu.focus]);
     return exitGame;
