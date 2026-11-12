@@ -107,6 +107,25 @@ static void st_bmp(const char* path, const u8* fb, int fmt, int w, int h, int st
     fclose(f);
 }
 
+// One pixel of what a screen shows now, as 0xRRGGBB (x, y in 400x240 / 320x240 layout pixels).
+static long st_pixel(int top, int x, int y) {
+    GSPGPU_CaptureInfo ci;
+    if (R_FAILED(GSPGPU_ImportDisplayCaptureInfo(&ci))) return -1;
+    GSPGPU_CaptureInfoEntry* e = &ci.screencapture[top ? 0 : 1];
+    int fmt = e->format & 7;
+    if (top && (e->format & 0x60) == 0) x *= 2;   // 800-pixel mode
+    int bpp = fmt == GSP_RGBA8_OES ? 4 : fmt == GSP_BGR8_OES ? 3 : 2;
+    const u8* p = (const u8*)e->framebuf0_vaddr + x * e->framebuf_widthbytesize + (239 - y) * bpp;
+    if (fmt == GSP_RGBA8_OES) return (p[3] << 16) | (p[2] << 8) | p[1];
+    if (fmt == GSP_BGR8_OES) return (p[2] << 16) | (p[1] << 8) | p[0];
+    u16 c = p[0] | (p[1] << 8);
+    if (fmt == GSP_RGB565_OES) return ((c >> 11) << 19) | (((c >> 5) & 63) << 10) | ((c & 31) << 3);
+    return ((c >> 11) << 19) | (((c >> 6) & 31) << 11) | (((c >> 1) & 31) << 3);
+}
+
+static int st_waitTop, st_waitX, st_waitY;
+static long st_waitCol, st_waitMax, st_waitDone;
+
 static void st_shot(const char* name) {
     GSPGPU_CaptureInfo ci;
     if (R_FAILED(GSPGPU_ImportDisplayCaptureInfo(&ci))) { st_logf("shot %s: capture failed\n", name); return; }
@@ -225,6 +244,15 @@ static void st_step(void) {
     st_prev = st_held;
     if (st_tapFrames) st_tapFrames--;
     if (st_stickFrames && !--st_stickFrames) st_stick = 0;
+    if (st_waitMax > 0) {   // waitpix: until the pixel matches, or the limit
+        long c = st_pixel(st_waitTop, st_waitX, st_waitY);
+        int dr = (int)((c >> 16) & 255) - (int)((st_waitCol >> 16) & 255), dg = (int)((c >> 8) & 255) - (int)((st_waitCol >> 8) & 255),
+            db = (int)(c & 255) - (int)(st_waitCol & 255);
+        int hit = c >= 0 && abs(dr) < 48 && abs(dg) < 48 && abs(db) < 48;
+        if (!hit && ++st_waitDone < st_waitMax) return;
+        st_logf("waitpix: %s after %ld frames\n", hit ? "found" : "NOT FOUND", st_waitDone);
+        st_waitMax = 0;
+    }
     if (st_wait > 0) {
         if (--st_wait == 0) st_held &= st_hold;   // a press ends; held buttons stay
         return;
@@ -241,6 +269,13 @@ static void st_step(void) {
         if (!strcmp(cmd, "tap")) { st_tx = atoi(a1); st_ty = atoi(a2); st_tapFrames = *a3 ? atoi(a3) : 6; st_held |= KEY_TOUCH; st_wait = st_tapFrames; return; }
         if (!strcmp(cmd, "stick")) { st_stick = a1[0] == 'C' ? 2 : 1; st_sx = atoi(a2); st_sy = atoi(a3); st_stickFrames = atoi(a4); continue; }
         if (!strcmp(cmd, "shot")) { st_shot(a1); continue; }
+        if (!strcmp(cmd, "waitpix")) {   // waitpix top|bottom X Y RRGGBB MAXFRAMES
+            st_waitTop = !strcmp(a1, "top"); st_waitX = atoi(a2); st_waitY = atoi(a3);
+            char col[16] = ""; long mx = 0;
+            sscanf(st_lines[st_pc - 1], "%*s %*s %*s %*s %15s %ld", col, &mx);
+            st_waitCol = strtol(col, NULL, 16); st_waitMax = mx; st_waitDone = 0;
+            return;
+        }
         if (!strcmp(cmd, "hang")) continue;   // the emulator suite checks hangs; here the agent times out
         if (!strcmp(cmd, "end")) break;
     }
