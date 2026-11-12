@@ -18,6 +18,10 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#ifdef __cplusplus
+extern "C" {   // the same file builds as C or C++ (ScummVM's build only compiles C++)
+#endif
+
 extern int __system_argc;
 extern char** __system_argv;
 
@@ -79,7 +83,7 @@ static void st_bmp(const char* path, const u8* fb, int fmt, int w, int h, int st
     memcpy(hd + 22, &h, 4);
     hd[26] = 1; hd[28] = 24;
     fwrite(hd, 1, 54, f);
-    u8* line = malloc(row);
+    u8* line = (u8*)malloc(row);
     int bpp = fmt == GSP_RGBA8_OES ? 4 : fmt == GSP_BGR8_OES ? 3 : 2;
     for (int y = h - 1; y >= 0; y--) {           // BMP rows go bottom-up
         memset(line, 0, row);
@@ -244,3 +248,7 @@ void __wrap_irrstCstickRead(circlePosition* pos) {
     pos->dx = st_stick == 2 ? st_sx : 0;
     pos->dy = st_stick == 2 ? st_sy : 0;
 }
+
+#ifdef __cplusplus
+}
+#endif
