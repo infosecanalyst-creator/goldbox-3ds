@@ -15,7 +15,7 @@ include $(DEVKITARM)/3ds_rules
 
 TARGET      := goldbox
 BUILD       := build-3ds
-SOURCES     := src/cs src/Classes src/Classes/Combat src/Classes/DaxFiles src/engine src/host/common src/host/3ds
+SOURCES     := src/cs src/Classes src/Classes/Combat src/Classes/DaxFiles src/engine src/host/common src/host/3ds src/selftest
 DATA        :=
 INCLUDES    := src
 GRAPHICS    :=
@@ -33,7 +33,10 @@ CFLAGS   := -g -O2 -mword-relocations -ffunction-sections -fwrapv \
             $(ARCH) $(INCLUDE) -D__3DS__
 CXXFLAGS := $(CFLAGS) -std=gnu++17 -Wno-psabi
 ASFLAGS  := -g $(ARCH)
-LDFLAGS   = -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) -Wl,--gc-sections
+# On-3DS testing (src/selftest/selftest.c, copied from 3ds-test-suite/hwtest): inert unless the
+# test agent starts the game with --selftest=<script>.
+SELFTEST_WRAP := hidScanInput hidKeysHeld hidKeysDown hidKeysDownRepeat hidKeysUp hidTouchRead hidCircleRead irrstCstickRead aptMainLoop
+LDFLAGS   = -specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map) -Wl,--gc-sections $(foreach f,$(SELFTEST_WRAP),-Wl,--wrap=$(f))
 
 LIBS     := -lctru -lm
 LIBDIRS  := $(CTRULIB)
@@ -54,7 +57,8 @@ $(error duplicate source file names across folders: $(DUPES))
 endif
 
 export LD        := $(CXX)
-export OFILES    := $(CPPFILES:.cpp=.o)
+CFILES   := $(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
+export OFILES    := $(CPPFILES:.cpp=.o) $(CFILES:.c=.o)
 export INCLUDE   := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
                     $(foreach dir,$(LIBDIRS),-I$(dir)/include) -I$(CURDIR)/$(BUILD)
 export LIBPATHS  := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
