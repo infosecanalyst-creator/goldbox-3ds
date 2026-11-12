@@ -914,13 +914,21 @@ std::vector<Button> ChoiceButtonsRaw(const Context& cx) {
     }
     // Party members: 2 per row.
     if (cx.rosterVisible && !cx.list.active && y + 24 <= 200) {
+        // Only members whose name is on screen (the overland map hides the roster: no blank buttons);
+        // an odd last member takes the whole row so no empty cell is left.
         int bw = (w - 4) / 2;
-        for (int i = 0; i < cx.roster.count && y + 24 <= 200; i++) {
-            Button bt{x0 + (i % 2) * (bw + 4), y, bw, 24, 0, MemberName(cx.roster, i)};
+        std::vector<int> shown;
+        for (int i = 0; i < cx.roster.count; i++)
+            if (MemberName(cx.roster, i).find_first_not_of(' ') != std::string::npos) shown.push_back(i);
+        int ns = (int)shown.size();
+        for (int k = 0; k < ns && y + 24 <= 200; k++) {
+            int i = shown[k];
+            bool wide = k == ns - 1 && k % 2 == 0;
+            Button bt{x0 + (k % 2) * (bw + 4), y, wide ? w : bw, 24, 0, MemberName(cx.roster, i)};
             bt.member = i;
             bt.selected = i == cx.roster.selected;
             b.push_back(bt);
-            if (i % 2 == 1 || i == cx.roster.count - 1) y += 28;
+            if (k % 2 == 1 || k == ns - 1) y += 28;
         }
     }
     if (b.empty() && (cx.items.empty() || MenuSaysContinue(cx.prompt, cx.items)))
@@ -1126,11 +1134,12 @@ void DrawCombatPanel(const Surface& top, const std::vector<platform::PartyMember
         TextFit(top, 236, y + 13, 156, "AC " + std::to_string(m.ac) + (m.status.empty() || m.status == "Okay" ? "" : "  " + m.status), kGrey, false);
         y += party.size() > 6 ? 19 : 26;
     }
-    Fill(top, 16, 190, 368, 1, RGB{160, 60, 60});
-    Text(top, 16, 196, "Tap a square to aim, a word to act", kGrey);
-    Text(top, 16, 208, LH("D-pad/Circle Pad move (diagonals OK)", "ABXY/Circle Pad move (diagonals OK)"), kGrey);
-    Text(top, 16, 220, "Diagonals: L R up, C-Stick down  ZL swap", kGrey);
-    Text(top, 16, 231, LH("ZR: D-pad to the touch buttons, A presses", "ZR: ABXY to the touch buttons, D-Rt presses"), kGrey);
+    // Four help lines, the last one ending 6 px above the screen edge (descenders were clipped at y 231).
+    Fill(top, 16, 186, 368, 1, RGB{160, 60, 60});
+    Text(top, 16, 191, "Tap a square to aim, a word to act", kGrey);
+    Text(top, 16, 202, LH("D-pad/Circle Pad move (diagonals OK)", "ABXY/Circle Pad move (diagonals OK)"), kGrey);
+    Text(top, 16, 213, "Diagonals: L R up, C-Stick down  ZL swap", kGrey);
+    Text(top, 16, 224, LH("ZR: D-pad to the touch buttons, A presses", "ZR: ABXY to the touch buttons, D-Rt presses"), kGrey);
 }
 
 // ---------------------------------------------------------------------------
