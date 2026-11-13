@@ -987,6 +987,8 @@ void DrawDashboard(const Surface& top, const Context& cx) {
                 TextFit(top, 24, y + (int)i * 11, 368, ((int)i == hotFocus ? "> " : "  ") + t, (int)i == hotFocus ? kGold : kWhite, false);
             }
         }
+        // Move down past the choices, so the party list below never draws over them.
+        y += (int)std::min<size_t>(cx.hot.size(), 12) * (big ? 18 : 11) + 4;
     } else if (!cx.words.empty()) {
         int shown = std::min<int>((int)cx.words.size(), 8);
         for (int i = 0; i < shown; i++) {
@@ -1001,13 +1003,16 @@ void DrawDashboard(const Surface& top, const Context& cx) {
     // Party: name, HP, AC (from the game's own party data).
     if (!cx.list.active) {
         y = std::max(y + 6, 120);
+        int step = cx.party.size() > 6 ? 9 : 11;
+        // Squeeze the rows when a long menu leaves little room; never draw past the divider.
+        if (!cx.party.empty() && y + (int)cx.party.size() * step > 192) step = std::max(9, (192 - y) / (int)cx.party.size());
         for (auto& m : cx.party) {
-            if (y > 176) break;
+            if (y + 8 > 192) { ReportCutText("party", m.name); break; }
             char line[64];
             std::snprintf(line, sizeof line, "%c %-15s HP %3d/%-3d AC %d", m.active ? '>' : ' ', m.name.substr(0, 15).c_str(),
                           m.hp, m.hpMax, m.ac);
             Text(top, 16, y, line, m.active ? kGold : kGrey);  // NOLINT
-            y += cx.party.size() > 6 ? 9 : 11;
+            y += step;
         }
     }
 
