@@ -32,15 +32,30 @@ static void WaitForKey_Release() {
 }
 
 static void WaitForKey_WaitOne() {
-    LockGuard g(seg049::WaitForKeyLock);
-    seg049::WaitForKey.wait(seg049::WaitForKeyLock, [] { return seg049::WaitForKeyCount > 0 || seg049::abortRequested; });
-    if (seg049::abortRequested) throw EngineAbort();
-    seg049::WaitForKeyCount = 0;
+    for (;;) {
+        {
+            LockGuard g(seg049::WaitForKeyLock);
+            seg049::WaitForKey.wait(seg049::WaitForKeyLock, [] { return seg049::WaitForKeyCount > 0 || seg049::abortRequested || seg049::suspendSave == 1; });
+            if (seg049::abortRequested) throw EngineAbort();
+            if (seg049::suspendSave != 1) {
+                seg049::WaitForKeyCount = 0;
+                return;
+            }
+        }
+        // goldbox-3ds: the suspend save runs here, outside the lock, then the wait goes on
+        seg049::suspendSave = ovr017::SuspendSave() ? 2 : 3;
+    }
 }
 
 void seg049::RequestAbort() {
     LockGuard g(WaitForKeyLock);
     abortRequested = true;
+    WaitForKey.notify_all();
+}
+
+void seg049::RequestSuspendSave() {
+    LockGuard g(WaitForKeyLock);
+    suspendSave = 1;
     WaitForKey.notify_all();
 }
 

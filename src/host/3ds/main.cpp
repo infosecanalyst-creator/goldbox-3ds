@@ -1738,6 +1738,13 @@ std::vector<Button> PortMenuButtons() {
 }
 
 // Returns true when the player chose to exit the game.
+// rule 17: EXIT GAME saves into slot J where the game could be saved: camping (2), the
+// wilderness map (3) or the 3D view (4). The engine checks again (party present) when it saves.
+static bool SuspendSavePossible() {
+    const int st = host::GameStateNow();
+    return st == 2 || st == 3 || st == 4;
+}
+
 bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface& bottom) {
     std::vector<Button> bs = PortMenuButtons();
     int n = (int)bs.size();
@@ -1793,9 +1800,15 @@ bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surfac
     Text(top, 392 - TextWidth("PAUSED"), 7, "PAUSED", kGrey);
     if (portMenu.confirm) {
         Text(top, 16, 60, "Exit the game?", kWhite, 2);
-        Text(top, 16, 100, "Progress since your last save is lost.", kGrey);
-        Text(top, 16, 116, "Save first from the game's own menu", kGrey);
-        Text(top, 16, 128, "(Encamp, then Save) if you want to keep it.", kGrey);
+        if (SuspendSavePossible()) {
+            Text(top, 16, 100, "The game is saved first to slot J,", kGrey);
+            Text(top, 16, 116, "the slot kept for the exit save.", kGrey);
+            Text(top, 16, 128, "Load it with Load Saved Game, then J.", kGrey);
+        } else {
+            Text(top, 16, 100, "Progress since your last save is lost.", kGrey);
+            Text(top, 16, 116, "Save first from the game's own menu", kGrey);
+            Text(top, 16, 128, "(Encamp, then Save) if you want to keep it.", kGrey);
+        }
     } else {
         Text(top, 16, 40, "RESUME     back to the game", kWhite);
         Text(top, 16, 60, "MANUAL     how to play on the 3DS", kWhite);
@@ -1810,7 +1823,8 @@ bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surfac
     Fill(bottom, 0, 0, 320, 240, kDash);
     if (portMenu.confirm) {
         Text(bottom, (320 - TextWidth("Exit the game?", 2)) / 2, 30, "Exit the game?", kWhite, 2);
-        Text(bottom, (320 - TextWidth("Unsaved progress is lost.")) / 2, 64, "Unsaved progress is lost.", kGrey);
+        const char* sub = SuspendSavePossible() ? "Saved first to slot J." : "Unsaved progress is lost.";
+        Text(bottom, (320 - TextWidth(sub)) / 2, 64, sub, kGrey);
     }
     DrawButtons(bottom, bs, now);
     DrawRing(bottom, bs[portMenu.focus]);
@@ -2055,6 +2069,23 @@ int main(int argc, char** argv) {
             gfxFlushBuffers();
             gfxSwapBuffers();
             gspWaitForVBlank();
+            if (quit && SuspendSavePossible()) {
+                // rule 17: save into the reserved slot J first; the engine thread does it at its key wait
+                host::RequestSuspendSave();
+                const u64 t0 = osGetTime();
+                while (aptMainLoop() && host::SuspendSaveState() == 1 && osGetTime() - t0 < 15000) {
+                    u16 sw, sh;
+                    Surface sb{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &sw, &sh), 320};
+                    Fill(sb, 0, 0, 320, 240, kDash);
+                    Fill(sb, 0, 0, 320, 22, kBtn);
+                    Text(sb, 8, 7, "EXIT GAME", kGold);
+                    Text(sb, (320 - TextWidth("Saving to slot J...")) / 2, 112, "Saving to slot J...", kWhite);
+                    gfxFlushBuffers();
+                    gfxSwapBuffers();
+                    gspWaitForVBlank();
+                }
+                std::printf("goldbox-3ds: suspend save -> %d\n", host::SuspendSaveState());
+            }
             if (quit) break;
             continue;
         }

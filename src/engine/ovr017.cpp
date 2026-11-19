@@ -1102,8 +1102,6 @@ void ovr017::loadSaveGame(String file_name)
 void ovr017::SaveGame()
 {
     char inputKey;
-    Classes::File save_file = New<Classes::File_>();
-    Array<String> var_171 = Array<String>(9);
 
     do
     {
@@ -1112,6 +1110,17 @@ void ovr017::SaveGame()
     } while (unk_4AEA0->MemberOf(inputKey) == false);
 
     if (inputKey != '\0')
+    {
+        SaveGameToSlot(inputKey);
+    }
+}
+
+// goldbox-3ds: the save itself, for a chosen slot letter (the game's Save menu, and EXIT GAME's
+// suspend save into the reserved last slot J). Same file format and steps as before.
+void ovr017::SaveGameToSlot(char inputKey)
+{
+    Classes::File save_file = New<Classes::File_>();
+    Array<String> var_171 = Array<String>(9);
     {
         gbl::import_from = ImportSource::Curse;
 
@@ -1194,7 +1203,23 @@ void ovr017::SaveGame()
 
         gbl::gameSaved = true;
         ovr027::ClearPromptArea();
-    }
+        }
+}
+
+// goldbox-3ds, rule 17 (never lose progress): EXIT GAME saves into the reserved last slot J
+// (Ryan, Nov 19 2026: "Reserve the last slot"), only where the game itself could be saved and
+// restored: camping, the wilderness map or the 3D view, with a party.
+bool ovr017::SuspendSave()
+{
+    if (gbl::game_state != GameState::Camping && gbl::game_state != GameState::WildernessMap &&
+        gbl::game_state != GameState::DungeonMap)
+        return false;
+    int party = 0;
+    for (Player p : gbl::TeamList) { (void)p; party++; }
+    if (party == 0) return false;
+    gbl::gameSaved = false;
+    SaveGameToSlot('J');
+    return gbl::gameSaved;
 }
 
 }  // namespace engine

@@ -22,5 +22,10 @@ struct seg049 {
     // goldbox-3ds: host shutdown request; the next key wait throws cs::EngineAbort.
     inline static bool abortRequested = false;
     static void RequestAbort();
+    // goldbox-3ds: EXIT GAME's suspend save (rule 17). The host asks; the engine thread saves at its
+    // next key wait (a point where the game itself waits for the player). 0 none, 1 asked, 2 saved,
+    // 3 not possible here (combat, shop, start menu, no party).
+    inline static volatile int suspendSave = 0;
+    static void RequestSuspendSave();
 };
 

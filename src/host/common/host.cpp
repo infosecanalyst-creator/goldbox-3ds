@@ -90,4 +90,8 @@ void PushKey(uint16_t ibmKey) { engine::seg049::AddKey(ibmKey); }
 
 void RequestQuit() { engine::seg049::RequestAbort(); }
 
+void RequestSuspendSave() { engine::seg049::RequestSuspendSave(); }
+
+int SuspendSaveState() { return engine::seg049::suspendSave; }
+
 }  // namespace host

@@ -35,5 +35,7 @@ struct ovr017 {
     inline static Set unk_4AEA0 = New<Set_>(Array<int>{0, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74});
     inline static Set unk_4AEEF = New<Set_>(Array<int>{0, 2, 18});
     static void SaveGame();
+    static void SaveGameToSlot(char inputKey); // goldbox-3ds
+    static bool SuspendSave();                 // goldbox-3ds: EXIT GAME, reserved slot J
 };
 
