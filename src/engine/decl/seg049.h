@@ -24,7 +24,7 @@ struct seg049 {
     static void RequestAbort();
     // goldbox-3ds: EXIT GAME's suspend save (rule 17). The host asks; the engine thread saves at its
     // next key wait (a point where the game itself waits for the player). 0 none, 1 asked, 2 saved,
-    // 3 not possible here (combat, shop, start menu, no party).
+    // 3 not possible here (combat, shop, start menu, no party), 4 saving.
     inline static volatile int suspendSave = 0;
     static void RequestSuspendSave();
 };

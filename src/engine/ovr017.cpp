@@ -1211,14 +1211,16 @@ void ovr017::SaveGameToSlot(char inputKey)
 // restored: camping, the wilderness map or the 3D view, with a party.
 bool ovr017::SuspendSave()
 {
+    int party = 0;
+    for (Player p : gbl::TeamList) { (void)p; party++; }
+    Logging::Logger::Log("3ds: exit save asked (state {0}, party {1})", (int)gbl::game_state, party);
     if (gbl::game_state != GameState::Camping && gbl::game_state != GameState::WildernessMap &&
         gbl::game_state != GameState::DungeonMap)
         return false;
-    int party = 0;
-    for (Player p : gbl::TeamList) { (void)p; party++; }
     if (party == 0) return false;
     gbl::gameSaved = false;
     SaveGameToSlot('J');
+    Logging::Logger::Log("3ds: exit save to slot J: {0}", gbl::gameSaved ? "saved" : "not saved");
     return gbl::gameSaved;
 }
 

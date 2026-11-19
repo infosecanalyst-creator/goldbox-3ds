@@ -43,6 +43,7 @@ static void WaitForKey_WaitOne() {
             }
         }
         // goldbox-3ds: the suspend save runs here, outside the lock, then the wait goes on
+        seg049::suspendSave = 4;   // saving: a key wait inside the save must not start it again
         seg049::suspendSave = ovr017::SuspendSave() ? 2 : 3;
     }
 }

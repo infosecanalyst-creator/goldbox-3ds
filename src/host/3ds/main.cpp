@@ -2073,7 +2073,7 @@ int main(int argc, char** argv) {
                 // rule 17: save into the reserved slot J first; the engine thread does it at its key wait
                 host::RequestSuspendSave();
                 const u64 t0 = osGetTime();
-                while (aptMainLoop() && host::SuspendSaveState() == 1 && osGetTime() - t0 < 15000) {
+                while (aptMainLoop() && (host::SuspendSaveState() == 1 || host::SuspendSaveState() == 4) && osGetTime() - t0 < 15000) {
                     u16 sw, sh;
                     Surface sb{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &sw, &sh), 320};
                     Fill(sb, 0, 0, 320, 240, kDash);
