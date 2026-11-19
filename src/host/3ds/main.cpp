@@ -2074,6 +2074,7 @@ int main(int argc, char** argv) {
                 host::RequestSuspendSave();
                 const u64 t0 = osGetTime();
                 while (aptMainLoop() && (host::SuspendSaveState() == 1 || host::SuspendSaveState() == 4) && osGetTime() - t0 < 15000) {
+                    hidScanInput();   // keeps the system (and the test agent's frame count) going
                     u16 sw, sh;
                     Surface sb{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &sw, &sh), 320};
                     Fill(sb, 0, 0, 320, 240, kDash);

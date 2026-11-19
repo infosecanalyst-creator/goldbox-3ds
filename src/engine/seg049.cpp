@@ -31,6 +31,15 @@ static void WaitForKey_Release() {
     seg049::WaitForKey.notify_one();
 }
 
+// goldbox-3ds: EXIT GAME's suspend save, run on the engine thread wherever it waits for or
+// polls the keyboard (the 3D view polls, menus block). State 4 while saving, so a key wait
+// inside the save does not start it again.
+static void RunSuspendSaveIfAsked() {
+    if (seg049::suspendSave != 1) return;
+    seg049::suspendSave = 4;
+    seg049::suspendSave = ovr017::SuspendSave() ? 2 : 3;
+}
+
 static void WaitForKey_WaitOne() {
     for (;;) {
         {
@@ -43,8 +52,7 @@ static void WaitForKey_WaitOne() {
             }
         }
         // goldbox-3ds: the suspend save runs here, outside the lock, then the wait goes on
-        seg049::suspendSave = 4;   // saving: a key wait inside the save must not start it again
-        seg049::suspendSave = ovr017::SuspendSave() ? 2 : 3;
+        RunSuspendSaveIfAsked();
     }
 }
 
@@ -72,6 +80,7 @@ void seg049::AddKey(ushort key) {
 ushort seg049::int_check_keyPressed() {
     // INT 16 - KEYBOARD - CHECK FOR KEYSTROKE (AH = 01h): peek, don't remove.
     if (abortRequested) throw EngineAbort();
+    RunSuspendSaveIfAsked();
     if (Harness::enabled) return Harness::CheckKey();
     LockGuard g(keysPressedLock);
     if (keysPressed.Count() > 0) {
