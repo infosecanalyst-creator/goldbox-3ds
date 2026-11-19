@@ -1478,10 +1478,34 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
     }
 
     std::vector<Button> buttons = ViewerButtons();
+    // Touch: a tap (lifted within 6 px) presses the button where it went down; a touch that
+    // moves further drags the text (rule 13), a line per 10 px, with a little momentum.
+    static int tx0, ty0, tyLast, dragAcc, tState;   // tState: 0 none, 1 maybe a tap, 2 dragging
+    static float mom;
+    bool tapNow = false;
     if (down & KEY_TOUCH) {
         touchPosition t;
         hidTouchRead(&t);
-        if (const Button* b = ButtonAt(buttons, t.px, t.py)) {
+        tx0 = t.px; ty0 = t.py; tyLast = t.py; dragAcc = 0; tState = 1; mom = 0;
+    } else if (tState && (held & KEY_TOUCH)) {
+        touchPosition t;
+        hidTouchRead(&t);
+        if (tState == 1 && (std::abs(t.px - tx0) > 6 || std::abs(t.py - ty0) > 6)) tState = 2;
+        if (tState == 2) { dragAcc += tyLast - t.py; mom = (float)(tyLast - t.py); }
+        tyLast = t.py;
+    } else if (tState) {
+        tapNow = tState == 1;
+        tState = 0;
+    } else if (mom > 0.5f || mom < -0.5f) {
+        dragAcc += (int)(mom * 2.0f);
+        mom *= 0.88f;
+    }
+    if (dragAcc >= 10 || dragAcc <= -10) {
+        viewer.scroll = std::max(0, std::min(viewer.scroll + dragAcc / 10, maxScroll));
+        dragAcc %= 10;
+    }
+    if (tapNow) {
+        if (const Button* b = ButtonAt(buttons, tx0, ty0)) {
             PlayClick();
             flashKey = b->key;
             flashRow = flashMember = -1;
