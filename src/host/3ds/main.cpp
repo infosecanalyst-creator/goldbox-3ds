@@ -1769,6 +1769,39 @@ static bool SuspendSavePossible() {
     return st == 2 || st == 3 || st == 4;
 }
 
+// GB-05: HOME pressed: ask the engine thread for the slot-J save (the same one EXIT GAME does)
+// while the game sits in the HOME Menu. The hook runs inside aptMainLoop() on the UI thread and
+// only raises the engine's request flag; the engine thread saves at its next key wait, as for
+// EXIT GAME. Not on sleep (lid closed): the 3DS halts the threads, so the save would only run
+// after waking up anyway.
+static aptHookCookie aptCookie;
+static void AptHook(APT_HookType type, void*) {
+    if (type != APTHOOK_ONSUSPEND || engineDone || !SuspendSavePossible()) return;
+    const int st = host::SuspendSaveState();
+    if (st == 1 || st == 4) return;   // a save is already asked for or running
+    std::printf("goldbox-3ds: HOME pressed, asking for the slot J save\n");
+    host::RequestSuspendSave();
+}
+
+// GB-05: HOME -> Close: the UI loop has ended (aptMainLoop false). Wait for the slot-J save on
+// the engine thread before anything is torn down: start one if none is asked for or running,
+// give the engine up to 4 s to start it, and let a running save finish (up to 10 s more).
+// aptMainLoop() stays false now, so this loop only sleeps and polls.
+static void HomeCloseSave(bool startOne) {
+    if (engineDone || !SuspendSavePossible()) return;
+    int st = host::SuspendSaveState();
+    if (startOne && st != 1 && st != 4) { host::RequestSuspendSave(); st = 1; }
+    if (st != 1 && st != 4) return;
+    const u64 t0 = osGetTime();
+    while (!engineDone) {
+        st = host::SuspendSaveState();
+        const u64 waited = osGetTime() - t0;
+        if (!((st == 1 && waited < 4000) || (st == 4 && waited < 14000))) break;
+        svcSleepThread(20 * 1000000LL);
+    }
+    std::printf("goldbox-3ds: HOME close, slot J save -> %d\n", host::SuspendSaveState());
+}
+
 // GB-01: the slot-J exit save failed (or never finished): never quit on top of that
 // without asking. Returns true to exit anyway; focus starts on NO (house style).
 static bool AskExitAnyway(int state) {
@@ -1983,6 +2016,7 @@ int main(int argc, char** argv) {
     s32 prio = 0x30;
     svcGetThreadPriority(&prio, CUR_THREAD_HANDLE);
     Thread engine = threadCreate(EngineEntry, nullptr, 1024 * 1024, prio + 1, -2, false);
+    aptHook(&aptCookie, AptHook, nullptr);
 
     struct {
         std::string sig;
@@ -2583,6 +2617,11 @@ int main(int argc, char** argv) {
         gspWaitForVBlank();
     }
 
+    aptUnhook(&aptCookie);
+    // GB-05: left by HOME -> Close (not EXIT GAME, not the engine ending): save first. After EXIT
+    // GAME a save that is still asked for or running (HOME -> Close during "Saving to slot J...")
+    // is waited for too.
+    HomeCloseSave(!quit && !engineDone);
     if (exploredDirty) SaveAutomap();
     host::RequestQuit();
     threadJoin(engine, U64_MAX);
