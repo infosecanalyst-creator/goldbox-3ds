@@ -114,6 +114,18 @@ void MakeClick() {
     DSP_FlushDataCache(clickPcm, kClickFrames * 2);
 }
 
+// Exit: our ndspInit reference must be given back before main returns. Left held, the DSP thread
+// keeps running while exit() frees the heap its stack lives in, and it faults in
+// ndspiReadChnState (the JA2 exit crash, Nov 20 2026). Called on every way out of main(); the
+// flag makes a second call do nothing (an unmatched ndspExit would unbalance libctru's count).
+void AudioExit() {
+    if (!ndspOk) return;
+    ndspOk = false;
+    ndspChnWaveBufClear(0);
+    ndspChnWaveBufClear(1);
+    ndspExit();
+}
+
 void PlayClick() {
     if (!ndspOk || !clickPcm) return;
     ndspChnWaveBufClear(1);
@@ -1995,6 +2007,7 @@ int main(int argc, char** argv) {
                 gfxSwapBuffers();
                 gspWaitForVBlank();
             }
+            AudioExit();
             romfsExit();
             gfxExit();
             return 0;
@@ -2626,7 +2639,7 @@ int main(int argc, char** argv) {
     host::RequestQuit();
     threadJoin(engine, U64_MAX);
     threadFree(engine);
-    if (ndspOk) ndspExit();
+    AudioExit();  // after the engine thread is joined: nothing plays any more
     romfsExit();
     gfxExit();
     return 0;
