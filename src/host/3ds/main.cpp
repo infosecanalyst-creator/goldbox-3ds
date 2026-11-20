@@ -1769,6 +1769,69 @@ static bool SuspendSavePossible() {
     return st == 2 || st == 3 || st == 4;
 }
 
+// GB-01: the slot-J exit save failed (or never finished): never quit on top of that
+// without asking. Returns true to exit anyway; focus starts on NO (house style).
+static bool AskExitAnyway(int state) {
+    int focus = 1, pressed = -1, answer = -1;
+    u64 pressedAt = 0;
+    const char* why = state == 3 ? "The save to slot J failed." : "The save to slot J did not finish.";
+    while (aptMainLoop() && answer < 0) {
+        hidScanInput();
+        const u32 down = hidKeysDown();
+        const u64 now = osGetTime();
+        auto rect = [](int i, int& x, int& y, int& w, int& h) { x = i == 0 ? 6 : 164; y = 120; w = 150; h = 100; };
+        if (pressed < 0) {
+            int hit = -1;
+            if (down & (KEY_DLEFT | KEY_DRIGHT | KEY_DUP | KEY_DDOWN)) focus = 1 - focus;
+            if (down & KEY_A) hit = focus;
+            if (down & (KEY_B | KEY_START)) hit = 1;
+            if (down & KEY_TOUCH) {
+                touchPosition t;
+                hidTouchRead(&t);
+                for (int i = 0; i < 2; i++) {
+                    int x, y, w, h;
+                    rect(i, x, y, w, h);
+                    if (t.px >= x && t.px < x + w && t.py >= y && t.py < y + h) hit = i;
+                }
+            }
+            if (hit >= 0) { PlayClick(); pressed = focus = hit; pressedAt = now; }
+        } else if (now - pressedAt > 150) {
+            answer = pressed;
+        }
+        u16 w0, h0;
+        Surface sb{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &w0, &h0), 320};
+        Fill(sb, 0, 0, 320, 240, kDash);
+        Fill(sb, 0, 0, 320, 22, kBtn);
+        Text(sb, 8, 7, "SAVE FAILED", kGold);
+        Text(sb, 8, 40, why, kWhite);
+        Text(sb, 8, 56, "Is the SD card full or locked?", kGrey);
+        Text(sb, 8, 80, "Exit without saving?", kWhite);
+        Text(sb, 8, 96, "NO goes back to the game.", kGrey);
+        for (int i = 0; i < 2; i++) {
+            int x, y, w, h;
+            rect(i, x, y, w, h);
+            const bool pr = i == pressed;
+            const char* l = i == 0 ? "EXIT ANYWAY" : "NO";
+            Fill(sb, x, y, w, h, kBtnEdge);
+            Fill(sb, x + 1, y + 1, w - 2, h - 2, pr ? kBtnDown : kBtn);
+            Text(sb, x + (w - TextWidth(l)) / 2 + (pr ? 1 : 0), y + h / 2 - 4 + (pr ? 1 : 0), l, pr ? kDash : kWhite);
+            if (i == focus && !pr) {
+                Fill(sb, x - 2, y - 2, w + 4, 2, kGold); Fill(sb, x - 2, y + h, w + 4, 2, kGold);
+                Fill(sb, x - 2, y, 2, h, kGold); Fill(sb, x + w, y, 2, h, kGold);
+            }
+        }
+        gfxFlushBuffers();
+        gfxSwapBuffers();
+        gspWaitForVBlank();
+    }
+    while (aptMainLoop()) {   // don't let the closing press reach the game
+        hidScanInput();
+        if (!(hidKeysHeld() & (KEY_A | KEY_B | KEY_START | KEY_TOUCH))) break;
+        gspWaitForVBlank();
+    }
+    return answer == 0;
+}
+
 bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface& bottom) {
     std::vector<Button> bs = PortMenuButtons();
     int n = (int)bs.size();
@@ -2097,7 +2160,9 @@ int main(int argc, char** argv) {
                 // rule 17: save into the reserved slot J first; the engine thread does it at its key wait
                 host::RequestSuspendSave();
                 const u64 t0 = osGetTime();
-                while (aptMainLoop() && (host::SuspendSaveState() == 1 || host::SuspendSaveState() == 4) && osGetTime() - t0 < 15000) {
+                // up to 15 s for the engine to start the save; once it is writing (4), wait for it to finish
+                while (aptMainLoop() && !engineDone
+                       && ((host::SuspendSaveState() == 1 && osGetTime() - t0 < 15000) || host::SuspendSaveState() == 4)) {
                     hidScanInput();   // keeps the system (and the test agent's frame count) going
                     u16 sw, sh;
                     Surface sb{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &sw, &sh), 320};
@@ -2110,6 +2175,12 @@ int main(int argc, char** argv) {
                     gspWaitForVBlank();
                 }
                 std::printf("goldbox-3ds: suspend save -> %d\n", host::SuspendSaveState());
+                if (host::SuspendSaveState() != 2 && !engineDone && aptMainLoop() && !AskExitAnyway(host::SuspendSaveState())) {
+                    quit = false;            // back to the game
+                    portMenu.open = false;
+                    portMenu.confirm = false;
+                    continue;
+                }
             }
             if (quit) break;
             continue;
