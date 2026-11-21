@@ -9,7 +9,10 @@
 > Nintendo; names are trademarks of their owners.
 >
 > The engine core is derived from [coab](https://github.com/simeonpilgrim/coab).
-> This project publishes **source code only — no prebuilt binaries**.
+> CI builds every push to `main`: the latest `goldbox.3dsx` (with its build log and
+> `goldbox.elf.gz` / `goldbox.sym.gz` symbols) is on the
+> [`builds` branch](https://github.com/infosecanalyst-creator/goldbox-3ds/tree/builds);
+> `SOURCE_COMMIT` names the commit it was built from.
 
 A native, dual-screen engine for SSI's *Gold Box* AD&D games, aimed at the
 New Nintendo 3DS, with SDL2 desktop and headless builds for development.
@@ -68,6 +71,8 @@ cmake -B build && cmake --build build -j
 Windows builds can be cross-compiled with MinGW (`cmake/mingw-w64.cmake`).
 
 ## Building (3DS)
+
+Or skip building: take `goldbox.3dsx` from the `builds` branch.
 
 `make -f Makefile.3ds` with devkitARM + libctru (or `tools/3ds/build-3ds.bat`,
 which falls back to the devkitpro/devkitarm Docker image). Install over Wi-Fi
