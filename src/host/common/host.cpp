@@ -17,6 +17,9 @@
 
 namespace host {
 
+static std::string engineError;   // GB-03: set on the engine thread before EngineStopped()
+std::string EngineError() { return engineError; }
+
 // coab's MainForm.setSettings() with its Settings.settings defaults. Not
 // applied in differential-test runs (the coab harness doesn't apply them).
 static void ApplyDefaultSettings() {
@@ -68,6 +71,8 @@ void RunEngine(const Options& opt) {
             std::fclose(f);
         }
         std::fprintf(stderr, "goldbox: unhandled exception: %s\n", e.what());
+        engineError = e.what();
+        if (engineError.empty()) engineError = "unknown error";
     }
     platform::EngineStopped();
 }

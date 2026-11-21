@@ -2,9 +2,90 @@
 // Original C#: coab (c) Simeon Pilgrim, BSD-3. Translation: goldbox-3ds contributors.
 #include "engine/engine.h"
 
+#include <cstdio>
+#include <functional>
+#include <utility>
+#include <vector>
+
 namespace engine {
 using Logging::Config;
 using Logging::Logger;
+
+// goldbox-3ds (GB-02): crash-safe saves. Every file of a save (savgamX.dat and the party's
+// CHRDAT files) is first written to <name>.tmp with every write and the close checked; only
+// when all of them are complete are they swapped in, each through <name>.bak (rename over an
+// existing file fails on the 3DS SD card), so a failed or cut-short save never touches the
+// last good one. Any I/O exception while saving counts as a failed save (GB-03): it no longer
+// ends the engine.
+namespace {
+struct SaveBatch {
+    bool active = false;
+    bool ok = true;
+    std::vector<std::pair<String, String>> files;   // (tmp, final); an empty tmp deletes final
+};
+SaveBatch saveBatch;
+
+bool BeginSaveBatch() {
+    if (saveBatch.active) return false;
+    saveBatch = SaveBatch();
+    saveBatch.active = true;
+    return true;
+}
+
+void WriteSaveFile(const String& path, const std::function<void(Classes::File)>& body) {
+    const String tmp = path + ".tmp";
+    Classes::File file = New<Classes::File_>();
+    try {
+        file->Assign(tmp);
+        seg051::Rewrite(file);
+        body(file);
+        bool bad = file->stream->Failed();
+        seg051::Close(file);
+        bad = bad || file->stream->Failed();
+        if (bad) throw IOException(String("write failed: ") + tmp);
+        saveBatch.files.push_back(std::make_pair(tmp, path));
+    } catch (const std::exception& e) {
+        Logger::Log("3ds: save file NOT written: {0}", String(e.what()));
+        if (!file.IsNull() && !file->stream.IsNull()) file->stream->Close();
+        std::remove(tmp.c_str());
+        saveBatch.ok = false;
+    }
+}
+
+void DeleteWithSave(const String& path) { saveBatch.files.push_back(std::make_pair(String(), path)); }
+
+bool SwapIn(const String& tmp, const String& path) {
+    const String bak = path + ".bak";
+    const bool had = IO::File::Exists(path);
+    if (had) {
+        std::remove(bak.c_str());
+        if (std::rename(path.c_str(), bak.c_str()) != 0) return false;
+    }
+    if (std::rename(tmp.c_str(), path.c_str()) != 0) {
+        if (had) std::rename(bak.c_str(), path.c_str());
+        return false;
+    }
+    if (had) std::remove(bak.c_str());
+    return true;
+}
+
+// Returns true when every file of the batch is in place.
+bool EndSaveBatch() {
+    bool ok = saveBatch.ok;
+    if (ok) {
+        for (auto& f : saveBatch.files) {
+            if (f.first.empty()) { seg042::delete_file(f.second); continue; }
+            if (!SwapIn(f.first, f.second)) { Logger::Log("3ds: save swap failed: {0}", f.second); ok = false; }
+        }
+    } else {
+        for (auto& f : saveBatch.files) if (!f.first.empty()) std::remove(f.first.c_str());
+    }
+    saveBatch = SaveBatch();
+    return ok;
+}
+
+bool SuspendSaveRunning() { return seg049::suspendSave == 4; }
+}  // namespace
 
 void ovr017::BuildLoadablePlayersLists(List<MenuItem>& fileNames, List<MenuItem>& displayNames,
     short playerFileSize, int npcOffset, int nameOffset, String fileFilter) // sub_4708B
@@ -172,38 +253,43 @@ void ovr017::SavePlayer(String arg_0, Player player) // sub_47DFC
 
     String filePath = IO::Path::Combine(Config::GetSavePath(), file_text);
 
-    file->Assign(filePath + ext_text);
+    // goldbox-3ds (GB-02): written crash-safe (see SaveBatch); a save of the whole game commits
+    // these together with its savgam file, a character saved on its own commits here.
+    const bool ownBatch = BeginSaveBatch();
+    (void)file;
 
-    seg051::Rewrite(file);
-
-    seg051::BlockWrite(Player_::StructSize, player->ToByteArray(), file);
-    seg051::Close(file);
-
-    seg042::delete_file(filePath + ".swg");
+    WriteSaveFile(filePath + ext_text, [&](Classes::File f) {
+        seg051::BlockWrite(Player_::StructSize, player->ToByteArray(), f);
+    });
 
     if (player->items.Count() > 0)
     {
-        file->Assign(filePath + ".swg");
-        seg051::Rewrite(file);
-
-        player->items.ForEach([&](const Item& item) { seg051::BlockWrite(Item_::StructSize, item->ToByteArray(), file); });
-
-        seg051::Close(file);
+        WriteSaveFile(filePath + ".swg", [&](Classes::File f) {
+            player->items.ForEach([&](const Item& item) { seg051::BlockWrite(Item_::StructSize, item->ToByteArray(), f); });
+        });
     }
-
-    seg042::delete_file(filePath + ".fx");
+    else
+    {
+        DeleteWithSave(filePath + ".swg");
+    }
 
     if (player->affects.Count() > 0)
     {
-        file->Assign(filePath + ".fx");
-        seg051::Rewrite(file);
+        WriteSaveFile(filePath + ".fx", [&](Classes::File f) {
+            for (Affect affect : player->affects)
+            {
+                seg051::BlockWrite(Affect_::StructSize, affect->ToByteArray(), f);
+            }
+        });
+    }
+    else
+    {
+        DeleteWithSave(filePath + ".fx");
+    }
 
-        for (Affect affect : player->affects)
-        {
-            seg051::BlockWrite(Affect_::StructSize, affect->ToByteArray(), file);
-        }
-
-        seg051::Close(file);
+    if (ownBatch && !EndSaveBatch())
+    {
+        seg041::DisplayAndPause("Save failed. Is the SD card full?", 14);
     }
 }
 
@@ -1119,26 +1205,9 @@ void ovr017::SaveGame()
 // suspend save into the reserved last slot J). Same file format and steps as before.
 void ovr017::SaveGameToSlot(char inputKey)
 {
-    Classes::File save_file = New<Classes::File_>();
     Array<String> var_171 = Array<String>(9);
     {
         gbl::import_from = ImportSource::Curse;
-
-        short var_1FC;
-
-        do
-        {
-            save_file->Assign(IO::Path::Combine(Config::GetSavePath(), String("savgam") + inputKey + ".dat"));
-            seg051::Rewrite(save_file);
-            var_1FC = gbl::FIND_result;
-
-            if (unk_4AEEF->MemberOf(var_1FC) == false)
-            {
-                seg041::DisplayAndPause(String("Unexpected error during save: ") + ToString(var_1FC), 14);
-                seg051::Close(save_file);
-                return;
-            }
-        } while (unk_4AEEF->MemberOf(var_1FC) == false);
 
         ovr027::ClearPromptArea();
         seg041::displayString("Saving...Please Wait", 0, 10, 0x18, 0);
@@ -1147,35 +1216,6 @@ void ovr017::SaveGameToSlot(char inputKey)
         gbl::area_ptr->pics_on = (byte)(((gbl::PicsOn) ? 0x02 : 0) | ((gbl::AnimationsOn) ? 0x01 : 0));
         gbl::area2_ptr->game_area = gbl::game_area;
 
-        Array<byte> data = Array<byte>(0x1E00);
-
-        data[0] = gbl::game_area;
-        seg051::BlockWrite(1, data, save_file);
-
-        seg051::BlockWrite(0x800, gbl::area_ptr->ToByteArray(), save_file);
-        seg051::BlockWrite(0x800, gbl::area2_ptr->ToByteArray(), save_file);
-        seg051::BlockWrite(0x400, gbl::stru_1B2CA->ToByteArray(), save_file);
-        seg051::BlockWrite(0x1E00, gbl::ecl_ptr->ToByteArray(), save_file);
-
-        data[0] = (byte)gbl::mapPosX;
-        data[1] = (byte)gbl::mapPosY;
-        data[2] = gbl::mapDirection;
-        data[3] = gbl::mapWallType;
-        data[4] = gbl::mapWallRoof;
-        seg051::BlockWrite(5, data, save_file);
-
-        data[0] = (byte)gbl::last_game_state;
-        seg051::BlockWrite(1, data, save_file);
-        data[0] = (byte)gbl::game_state;
-        seg051::BlockWrite(1, data, save_file);
-
-        for (int i = 0; i < 3; i++)
-        {
-            Sys::ShortToArray((short)gbl::setBlocks[i]->blockId, data, (i * 4) + 0);
-            Sys::ShortToArray((short)gbl::setBlocks[i]->setId, data, (i * 4) + 2);
-        }
-        seg051::BlockWrite(12, data, save_file);
-
         int party_count = 0;
         for (Player tmp_player : gbl::TeamList)
         {
@@ -1183,26 +1223,73 @@ void ovr017::SaveGameToSlot(char inputKey)
             var_171[party_count - 1] = String("CHRDAT") + inputKey + ToString(party_count);
         }
 
-        data[0] = (byte)party_count;
-        seg051::BlockWrite(1, data, save_file);
+        // goldbox-3ds (GB-02): savgamX.dat and the CHRDAT files are written to .tmp files and
+        // swapped in together only when every one of them is complete (see SaveBatch).
+        BeginSaveBatch();
+        WriteSaveFile(IO::Path::Combine(Config::GetSavePath(), String("savgam") + inputKey + ".dat"), [&](Classes::File save_file) {
+            Array<byte> data = Array<byte>(0x1E00);
 
-        for (int i = 0; i < party_count; i++)
-        {
-            Sys::StringToArray(data, 0x29 * i, 0x29, var_171[i]);
-        }
-        seg051::BlockWrite(0x148, data, save_file);
-        seg051::Close(save_file);
+            data[0] = gbl::game_area;
+            seg051::BlockWrite(1, data, save_file);
+
+            seg051::BlockWrite(0x800, gbl::area_ptr->ToByteArray(), save_file);
+            seg051::BlockWrite(0x800, gbl::area2_ptr->ToByteArray(), save_file);
+            seg051::BlockWrite(0x400, gbl::stru_1B2CA->ToByteArray(), save_file);
+            seg051::BlockWrite(0x1E00, gbl::ecl_ptr->ToByteArray(), save_file);
+
+            data[0] = (byte)gbl::mapPosX;
+            data[1] = (byte)gbl::mapPosY;
+            data[2] = gbl::mapDirection;
+            data[3] = gbl::mapWallType;
+            data[4] = gbl::mapWallRoof;
+            seg051::BlockWrite(5, data, save_file);
+
+            data[0] = (byte)gbl::last_game_state;
+            seg051::BlockWrite(1, data, save_file);
+            data[0] = (byte)gbl::game_state;
+            seg051::BlockWrite(1, data, save_file);
+
+            for (int i = 0; i < 3; i++)
+            {
+                Sys::ShortToArray((short)gbl::setBlocks[i]->blockId, data, (i * 4) + 0);
+                Sys::ShortToArray((short)gbl::setBlocks[i]->setId, data, (i * 4) + 2);
+            }
+            seg051::BlockWrite(12, data, save_file);
+
+            data[0] = (byte)party_count;
+            seg051::BlockWrite(1, data, save_file);
+
+            for (int i = 0; i < party_count; i++)
+            {
+                Sys::StringToArray(data, 0x29 * i, 0x29, var_171[i]);
+            }
+            seg051::BlockWrite(0x148, data, save_file);
+        });
 
         party_count = 0;
         for (Player tmp_player : gbl::TeamList)
         {
             party_count++;
             SavePlayer(String("CHRDAT") + inputKey + ToString(party_count), tmp_player);
+        }
+
+        const bool saved = EndSaveBatch();
+        ovr027::ClearPromptArea();
+        if (!saved)
+        {
+            gbl::gameSaved = false;
+            Logger::Log("3ds: save to slot {0} FAILED", String(std::size_t(1), inputKey));
+            // EXIT GAME's save says so on its own screen; a save from the game's menu says it here
+            if (!SuspendSaveRunning()) seg041::DisplayAndPause("Save failed. Is the SD card full?", 14);
+            return;
+        }
+
+        for (Player tmp_player : gbl::TeamList)
+        {
             remove_player_file(tmp_player);
         }
 
         gbl::gameSaved = true;
-        ovr027::ClearPromptArea();
         }
 }
 

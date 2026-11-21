@@ -2145,6 +2145,9 @@ void ovr003::SkipNextCommand()
 
 void ovr003::RunEclVm(ushort offset) // sub_29607
 {
+    // goldbox-3ds (GB-04): while an event script runs (its text, menus and key waits included),
+    // EXIT GAME's save is refused: a save taken there would capture the event half-run.
+    struct Depth { Depth() { eclDepth = eclDepth + 1; } ~Depth() { eclDepth = eclDepth - 1; } } depth;
     gbl::ecl_offset = offset;
     gbl::stopVM = false;
 

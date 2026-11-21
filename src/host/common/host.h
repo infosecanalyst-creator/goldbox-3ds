@@ -27,9 +27,14 @@ void PushKey(uint16_t ibmKey);
 void RequestQuit();
 
 // EXIT GAME's suspend save into the reserved slot J (rule 17): the engine thread saves at its
-// next key wait. State: 0 none, 1 asked, 2 saved, 3 not possible there.
+// next key wait. State: 0 none, 1 asked, 2 saved, 3 not possible there or failed, 4 saving,
+// 5 refused because an event is running (GB-04).
 void RequestSuspendSave();
 int SuspendSaveState();
+
+// GB-03: why the engine stopped on an error (an unhandled exception, e.g. an SD card read or
+// write error), or empty when it ended normally. Read after the engine has stopped.
+std::string EngineError();
 
 // Copy the game's own 8x8 font (64 glyphs, indexed by upper-case ASCII % 64,
 // bit 7 = leftmost pixel) once the engine has loaded it. Call from the engine

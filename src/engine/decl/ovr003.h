@@ -63,6 +63,7 @@ struct ovr003 {
     static void SetupCommandTable();
     static void SkipNextCommand();
     static void RunEclVm(ushort offset); // sub_29607
+    inline static volatile int eclDepth = 0;   // goldbox-3ds (GB-04): ECL scripts running right now
     static void sub_29677();
     static void sub_29758();
 };

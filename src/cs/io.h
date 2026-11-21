@@ -153,6 +153,7 @@ struct Directory {
 
 class FileStream_ {
     std::FILE* f = nullptr;
+    bool failed = false;   // goldbox-3ds (GB-02): a write, truncate or close did not complete
 
 public:
     String name;
@@ -174,9 +175,10 @@ public:
     }
     void Write(const Array<byte>& buf, int offset, int count) {
         if (!f) throw IOException("stream closed");
-        std::fwrite(buf.data() + offset, 1, (std::size_t)count, f);
+        if (std::fwrite(buf.data() + offset, 1, (std::size_t)count, f) != (std::size_t)count) failed = true;
     }
-    void WriteByte(byte b) { std::fputc(b, f); }
+    void WriteByte(byte b) { if (std::fputc(b, f) == EOF) failed = true; }
+    bool Failed() const { return failed; }
     int64_t Seek(int64_t off, SeekOrigin o) {
         std::fseek(f, (long)off, o == SeekOrigin::Begin ? SEEK_SET : (o == SeekOrigin::Current ? SEEK_CUR : SEEK_END));
         return Position();
@@ -194,7 +196,7 @@ public:
     void Flush() { if (f) std::fflush(f); }
     void Close() {
         if (f) {
-            std::fclose(f);
+            if (std::fclose(f) != 0) failed = true;
             f = nullptr;
         }
     }

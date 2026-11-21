@@ -34,8 +34,14 @@ static void WaitForKey_Release() {
 // goldbox-3ds: EXIT GAME's suspend save, run on the engine thread wherever it waits for or
 // polls the keyboard (the 3D view polls, menus block). State 4 while saving, so a key wait
 // inside the save does not start it again.
+// GB-04: refused (5) while an event script runs, so a half-run event is never saved.
 static void RunSuspendSaveIfAsked() {
     if (seg049::suspendSave != 1) return;
+    if (ovr003::eclDepth > 0) {
+        Logging::Logger::Log("3ds: exit save refused: an event is running (depth {0})", (int)ovr003::eclDepth);
+        seg049::suspendSave = 5;
+        return;
+    }
     seg049::suspendSave = 4;
     seg049::suspendSave = ovr017::SuspendSave() ? 2 : 3;
 }

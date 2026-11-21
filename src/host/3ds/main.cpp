@@ -32,6 +32,7 @@
 
 #include <algorithm>
 #include <dirent.h>
+#include <sys/stat.h>
 #include <array>
 #include <map>
 #include <cctype>
@@ -355,15 +356,31 @@ void LoadAutomap() {
     std::fclose(f);
 }
 
+// GB-02: written to automap.bin.tmp (every write and the close checked), then swapped in through
+// .bak (rename over an existing file fails on the 3DS SD card); on failure the old map stays and
+// the map is tried again at the next save point.
 void SaveAutomap() {
-    FILE* f = std::fopen(kAutomapFile, "wb");
-    if (!f) return;
+    const std::string path = kAutomapFile, tmp = path + ".tmp", bak = path + ".bak";
+    FILE* f = std::fopen(tmp.c_str(), "wb");
+    if (!f) { std::printf("goldbox-3ds: automap NOT saved (open)\n"); return; }
+    bool ok = true;
     for (auto& e : explored) {
         int32_t key = e.first;
-        std::fwrite(&key, sizeof key, 1, f);
-        std::fwrite(e.second.data(), 1, 32, f);
+        if (std::fwrite(&key, sizeof key, 1, f) != 1 || std::fwrite(e.second.data(), 1, 32, f) != 32) { ok = false; break; }
     }
-    std::fclose(f);
+    if (std::fclose(f) != 0) ok = false;
+    if (ok) {
+        struct stat st;
+        const bool had = stat(path.c_str(), &st) == 0;
+        if (had) { std::remove(bak.c_str()); ok = std::rename(path.c_str(), bak.c_str()) == 0; }
+        if (ok && std::rename(tmp.c_str(), path.c_str()) != 0) {
+            ok = false;
+            if (had) std::rename(bak.c_str(), path.c_str());
+        } else if (ok && had) {
+            std::remove(bak.c_str());
+        }
+    }
+    if (!ok) { std::remove(tmp.c_str()); std::printf("goldbox-3ds: automap NOT saved\n"); return; }
     exploredDirty = false;
 }
 
@@ -1827,7 +1844,9 @@ static void HomeCloseSave(bool startOne) {
 static bool AskExitAnyway(int state) {
     int focus = 1, pressed = -1, answer = -1;
     u64 pressedAt = 0;
-    const char* why = state == 3 ? "The save to slot J failed." : "The save to slot J did not finish.";
+    const char* why = state == 3 ? "The save to slot J failed." : state == 5 ? "Can't save while an event runs."
+                    : "The save to slot J did not finish.";
+    const char* why2 = state == 5 ? "Finish the event, then exit again." : "Is the SD card full or locked?";
     while (aptMainLoop() && answer < 0) {
         hidScanInput();
         const u32 down = hidKeysDown();
@@ -1855,9 +1874,9 @@ static bool AskExitAnyway(int state) {
         Surface sb{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &w0, &h0), 320};
         Fill(sb, 0, 0, 320, 240, kDash);
         Fill(sb, 0, 0, 320, 22, kBtn);
-        Text(sb, 8, 7, "SAVE FAILED", kGold);
+        Text(sb, 8, 7, state == 5 ? "NOT SAVED" : "SAVE FAILED", kGold);
         Text(sb, 8, 40, why, kWhite);
-        Text(sb, 8, 56, "Is the SD card full or locked?", kGrey);
+        Text(sb, 8, 56, why2, kGrey);
         Text(sb, 8, 80, "Exit without saving?", kWhite);
         Text(sb, 8, 96, "NO goes back to the game.", kGrey);
         for (int i = 0; i < 2; i++) {
@@ -1883,6 +1902,44 @@ static bool AskExitAnyway(int state) {
         gspWaitForVBlank();
     }
     return answer == 0;
+}
+
+// GB-03: the engine stopped on an error (an unhandled exception such as an SD card read or write
+// error). Say so instead of closing silently; A, B, START or a tap closes the app.
+static void ShowEngineError(const std::string& msg) {
+    std::vector<std::string> lines;
+    std::string rest = msg;
+    while (!rest.empty() && lines.size() < 5) {   // wrap to the screen (8 px glyphs, 8 px margins)
+        size_t n = rest.size();
+        while (n > 0 && TextWidth(rest.substr(0, n).c_str()) > 304) {
+            size_t sp = rest.rfind(' ', n - 1);
+            n = (sp != std::string::npos && sp > 0) ? sp : n - 1;
+        }
+        if (n == 0) break;
+        lines.push_back(rest.substr(0, n));
+        rest = rest.substr(n);
+        while (!rest.empty() && rest[0] == ' ') rest.erase(0, 1);
+    }
+    bool waitRelease = true;
+    while (aptMainLoop()) {
+        hidScanInput();
+        const u32 held = hidKeysHeld(), down = hidKeysDown();
+        if (waitRelease) { if (!(held & (KEY_A | KEY_B | KEY_START | KEY_TOUCH))) waitRelease = false; }
+        else if (down & (KEY_A | KEY_B | KEY_START | KEY_TOUCH)) { PlayClick(); break; }
+        u16 w0, h0;
+        Surface sb{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &w0, &h0), 320};
+        Fill(sb, 0, 0, 320, 240, kDash);
+        Fill(sb, 0, 0, 320, 22, kBtn);
+        Text(sb, 8, 7, "GAME STOPPED", kGold);
+        Text(sb, 8, 36, "The game stopped on an error:", kWhite);
+        for (size_t i = 0; i < lines.size(); i++) Text(sb, 8, 56 + 14 * (int)i, lines[i].c_str(), kGrey);
+        Text(sb, 8, 136, "Details are in user/Crash Log.txt.", kGrey);
+        Text(sb, 8, 152, "Your last save is unchanged.", kGrey);
+        Text(sb, 8, 214, "A: close", kWhite);
+        gfxFlushBuffers();
+        gfxSwapBuffers();
+        gspWaitForVBlank();
+    }
 }
 
 bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface& bottom) {
@@ -2639,6 +2696,10 @@ int main(int argc, char** argv) {
         gspWaitForVBlank();
     }
 
+    if (engineDone && !quit) {   // GB-03: the engine ended by itself: on an error, say so
+        const std::string err = host::EngineError();
+        if (!err.empty()) ShowEngineError(err);
+    }
     aptUnhook(&aptCookie);
     // GB-05: left by HOME -> Close (not EXIT GAME, not the engine ending): save first. After EXIT
     // GAME a save that is still asked for or running (HOME -> Close during "Saving to slot J...")
