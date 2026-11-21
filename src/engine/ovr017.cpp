@@ -46,7 +46,7 @@ void WriteSaveFile(const String& path, const std::function<void(Classes::File)>&
         saveBatch.files.push_back(std::make_pair(tmp, path));
     } catch (const std::exception& e) {
         Logger::Log("3ds: save file NOT written: {0}", String(e.what()));
-        if (!file.IsNull() && !file->stream.IsNull()) file->stream->Close();
+        if (file.get() && file->stream.get()) file->stream->Close();
         std::remove(tmp.c_str());
         saveBatch.ok = false;
     }
