@@ -27,10 +27,13 @@ APP_AUTHOR      := goldbox-3ds contributors
 ICON            := assets/3ds/icon.png
 
 #---------------------------------------------------------------------------------
+# Port version in the START menu: git describe of this repo (exported for the build/ sub-make)
+PORT_VERSION ?= $(shell git -c safe.directory='*' -C "$(CURDIR)" describe --always --dirty 2>/dev/null || echo unknown)
+export PORT_VERSION
 ARCH     := -march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
 
 CFLAGS   := -g -O2 -mword-relocations -ffunction-sections -fwrapv \
-            $(ARCH) $(INCLUDE) -D__3DS__
+            $(ARCH) $(INCLUDE) -D__3DS__ -DPORT_VERSION=\"$(PORT_VERSION)\"
 CXXFLAGS := $(CFLAGS) -std=gnu++17 -Wno-psabi
 ASFLAGS  := -g $(ARCH)
 # On-3DS testing (src/selftest/selftest.c, copied from 3ds-test-suite/hwtest): inert unless the

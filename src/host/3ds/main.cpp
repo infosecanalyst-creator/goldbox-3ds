@@ -46,6 +46,9 @@
 #include "platform/keys.h"
 #include "platform/platform.h"
 #include "platform/readable_font.h"
+#ifndef PORT_VERSION
+#define PORT_VERSION "unknown"
+#endif
 
 namespace {
 
@@ -1947,6 +1950,7 @@ bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surfac
         Text(top, 16, 80, "JOURNAL    the Adventurer's Journal", kWhite);
         Text(top, 16, 100, "EXIT GAME  back to the Homebrew Menu", kWhite);
         Text(top, 16, 130, "Save from the game itself: Encamp, then Save.", kGrey);
+        Text(top, 16, 200, "Build " PORT_VERSION, kGrey);   // git describe of goldbox-3ds
     }
     Fill(top, 0, 224, 400, 16, RGB{20, 30, 70});
     std::string hint = LH("D-pad choose   A select   B or START close", "ABXY choose   D-Rt select   D-Dn or START close");
