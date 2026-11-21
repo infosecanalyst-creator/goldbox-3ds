@@ -26,7 +26,12 @@ jobs:
           mkdir -p out
           cp goldbox.3dsx build.log out/ 2>/dev/null || true
           # symbols for reading crash addresses: gzipped ELF (addr2line) and a demangled nm map
+          # (the full -g ELF gzips to ~100 MB, over GitHub's file limit: past 50 MB publish it without the
+          # DWARF line tables; function symbols, and so addr2line -f, still work)
           gzip -9c goldbox.elf > out/goldbox.elf.gz 2>/dev/null || true
+          if [ "$(stat -c%s out/goldbox.elf.gz 2>/dev/null || echo 0)" -gt 50000000 ]; then
+            "$DEVKITARM/bin/arm-none-eabi-objcopy" --strip-debug goldbox.elf goldbox-nodebug.elf && gzip -9c goldbox-nodebug.elf > out/goldbox.elf.gz || rm -f out/goldbox.elf.gz
+          fi
           "$DEVKITARM/bin/arm-none-eabi-nm" -C -n goldbox.elf 2>/dev/null | gzip -9 > out/goldbox.sym.gz || true
           echo "$GITHUB_SHA" > out/SOURCE_COMMIT
       - name: Publish to builds branch
