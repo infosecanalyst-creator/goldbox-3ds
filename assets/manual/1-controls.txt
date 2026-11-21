@@ -85,7 +85,7 @@ The title menu waits on Play; the demo only runs if you pick Demo, and any butto
 Create characters from the start menu, add them to the party, then choose Begin Adventuring.
 
 ## Saving and leaving
-You can save from the game itself at any time it allows: Encamp, then Save,.
+You can save from the game itself at any time it allows: Encamp, then Save.
 
 Slot J is kept for the exit save. Exit Game in the START menu asks "Exit the game?" and, while you are camping, on the wilderness map or in the 3D view, saves to slot J first ("Saving to slot J..."). To carry on later, choose Load Saved Game, then J. Closing the game from the HOME menu (HOME, then Close) saves to slot J the same way. Pressing HOME alone also saves to slot J, and sleep mode (closing the lid) does not.
 
