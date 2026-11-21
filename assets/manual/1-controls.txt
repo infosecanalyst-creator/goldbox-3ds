@@ -72,7 +72,7 @@ When the game wants a name or an answer, the keyboard opens and closes by itself
 ## The journal and this book
 The game sometimes tells you to read an entry in the Adventurer's Journal. When it does, the BOOK button shows the entry number (for example J.12); tap it to open that entry.
 
-In this book: the Circle Pad or C-Stick scrolls the text (hold to keep scrolling), or drag the stylus up or down on the touch screen; the D-Pad moves between the section buttons and A opens one; L / R go to the previous / next section (past the last section, on to the next tab); tap a section or a tab to open it; B or START closes the book.
+In this book: the Circle Pad or C-Stick scrolls the text (hold to keep scrolling), or drag the stylus up or down on the touch screen; the D-Pad moves between the section buttons, and a section opens as you pick it; L / R go to the previous / next section (past the last section, on to the next tab); tap a section or a tab to open it; B or START closes the book.
 
 Without the stylus, ZR, the D-Pad to BOOK, then A opens the book.
 

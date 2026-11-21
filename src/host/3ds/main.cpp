@@ -1289,7 +1289,7 @@ void DrawGameTop(const Surface& left, const Surface& right, float depth, int px 
 // The book: controls manual (romfs), journal / game manual / quick reference
 // (text files on the SD card, made from the user's own PDFs; not shipped).
 // Standard controls shared by all of these 3DS ports: Circle Pad / C-Stick scroll the
-// text (hold to repeat), D-Pad moves between section buttons (A opens),
+// text (hold to repeat), D-Pad moves between section buttons (a section opens as it is picked),
 // L/R previous/next section, tap a tab or section, B or START closes.
 // ---------------------------------------------------------------------------
 struct BookSection {
@@ -1309,7 +1309,7 @@ struct Viewer {
     u64 nextScroll = 0, nextFocus = 0;
 } viewer;
 
-constexpr int kWrap = 48, kTextRows = 23;
+constexpr int kWrap = 48, kTextRows = 22;   // 22 rows: the last 14 px of the top screen are the footer
 
 void WrapInto(std::vector<std::string>& out, const std::string& para) {
     std::string line;
@@ -1496,6 +1496,8 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
         if (viewer.focus == n) viewer.focus = df < 0 ? n - 1 : n;
         else if (viewer.focus + df > n - 1 && df == cols) viewer.focus = n;
         else viewer.focus = std::max(0, std::min(viewer.focus + df, n - 1));
+        // house standard: a section opens as the D-Pad picks it (A is only needed on LEFT)
+        if (viewer.focus < n && viewer.focus != viewer.section) { viewer.section = viewer.focus; viewer.scroll = 0; }
         viewer.nextFocus = now + ((down & (KEY_DUP | KEY_DDOWN | KEY_DLEFT | KEY_DRIGHT)) ? 350 : 110);
     }
     // Circle Pad / C-Stick: scroll the text (repeat when held).
@@ -1567,21 +1569,21 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
     for (int i = 0; i < kTextRows && viewer.scroll + i < (int)s2.lines.size(); i++)
         Text(top, 8, 19 + i * 9, s2.lines[viewer.scroll + i], RGB{235, 225, 200});
     if (maxS2 > 0) {  // scroll bar
-        int h = std::max(10, 210 * kTextRows / (int)s2.lines.size());
-        int y = 19 + (210 - h) * viewer.scroll / maxS2;
-        Fill(top, 395, 19, 3, 210, RGB{50, 44, 30});
+        int h = std::max(10, 198 * kTextRows / (int)s2.lines.size());
+        int y = 19 + (198 - h) * viewer.scroll / maxS2;
+        Fill(top, 395, 19, 3, 198, RGB{50, 44, 30});
         Fill(top, 395, y, 3, h, kGold);
     }
+    // Footer: the house wording (8 px font, 50 letters across: no colons, tighter gaps)
+    Fill(top, 0, 226, 400, 14, RGB{30, 26, 14});
+    Text(top, leftyOn ? 4 : 8, 229, LH("Sticks scroll  D-Pad, L/R section  B/START close", "Sticks scroll ABXY, L/R section D-Down/START close"), kGrey);
     if (!top.wide) std::memcpy(topR.fb, top.fb, 400 * 240 * 3);
 
-    // Bottom: tabs, section buttons, focus, help
+    // Bottom: tabs, section buttons, focus
     Fill(bottom, 0, 0, 320, 240, kDash);
     DrawButtons(bottom, buttons, now);
     for (auto& b : buttons)
         if (b.key == 0xE000 + viewer.focus || (viewer.focus == n && b.key == kViewerLefty)) Frame(bottom, b.x - 2, b.y - 2, b.w + 4, b.h + 4, kWhite);
-    Text(bottom, 4, 208, "Stick: scroll", kGrey);
-    Text(bottom, 4, 218, LH("D-Pad+A, L/R", "ABXY+Rt, L/R"), kGrey);
-    Text(bottom, 4, 228, LH("B/START close", "Dn/START close"), kGrey);
 }
 
 // "...READ JOURNAL ENTRY 12..." on the game screen: the entry number, or 0.
