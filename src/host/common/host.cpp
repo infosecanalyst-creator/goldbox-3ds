@@ -46,8 +46,13 @@ void RunEngine(const Options& opt) {
         return;
     }
     cs::Determinism::fixedSeedTicks = opt.fixedSeed;
+    Logging::Logger::debugEnabled = opt.debugLog;
+    Logging::Logger::bufferDebug = opt.debugLogBuffered;
+    Logging::Logger::capBytes = opt.debugLogBuffered ? 1024 * 1024 : 0;
     Logging::Config::Setup(opt.userDir.empty() ? cs::String("goldbox-user") : cs::String(opt.userDir));
     Logging::Logger::echoToConsole = opt.consoleLog;
+    if (opt.debugLogBuffered)   // the 3DS: one start line, always
+        Logging::Logger::Log("goldbox-3ds start{0}", opt.debugLog ? " (debug log on: debug.txt)" : "");
     Logging::Logger::SetExitFunc([] { engine::seg043::print_and_exit(); });
 
     try {

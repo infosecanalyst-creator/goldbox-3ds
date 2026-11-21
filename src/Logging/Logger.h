@@ -16,23 +16,49 @@ class DebugWriter {
     String filename;
     std::FILE* writer = nullptr;
     Mutex iolock;
+    long bytes = 0;
+
+    // GB-07: with a cap (the 3DS log) the file rolls over to <name>.old past capBytes.
+    void Open() {
+        if (writer != nullptr && capBytes > 0 && bytes > capBytes) {
+            std::fclose(writer);
+            writer = nullptr;
+            std::string old = filename + ".old";
+            std::remove(old.c_str());
+            std::rename(filename.c_str(), old.c_str());
+        }
+        if (writer == nullptr && !filename.empty()) {
+            writer = std::fopen(filename.c_str(), "a");
+            if (writer != nullptr) {
+                if (capBytes > 0) std::setvbuf(writer, nullptr, _IOFBF, 16384);
+                std::fseek(writer, 0, SEEK_END);
+                bytes = std::ftell(writer);
+            }
+        }
+    }
 
 public:
+    long capBytes = 0;   // 0: no cap, no extra buffer (PC, and the debug dump files)
+
     explicit DebugWriter(const String& _filename) : filename(_filename) {}
     ~DebugWriter() { Close(); }
-    void WriteLine(const String& s) {
+    void WriteLine(const String& s, bool flush = true) {
         LockGuard g(iolock);
-        if (writer == nullptr && !filename.empty()) writer = std::fopen(filename.c_str(), "a");
+        Open();
         if (writer != nullptr) {
             std::fputs(s.c_str(), writer);
             std::fputc('\n', writer);
-            std::fflush(writer);
+            bytes += (long)s.Length() + 1;
+            if (flush) std::fflush(writer);
         }
     }
     void Write(const String& s) {
         LockGuard g(iolock);
-        if (writer == nullptr && !filename.empty()) writer = std::fopen(filename.c_str(), "a");
-        if (writer != nullptr) std::fputs(s.c_str(), writer);
+        Open();
+        if (writer != nullptr) {
+            std::fputs(s.c_str(), writer);
+            bytes += (long)s.Length();
+        }
     }
     void Close() {
         LockGuard g(iolock);
@@ -49,11 +75,19 @@ struct Logger {
     inline static VoidDelegate ExitFuncCallback;
     // Console echo of every Debug line (coab writes everything to stdout too).
     inline static bool echoToConsole = true;
+    // GB-07: Debug()/DebugWrite() lines (engine field reads, VM traces: many per second)
+    // only when this is set. The 3DS host sets it from sdmc:/3ds/goldbox/debug.txt and then
+    // buffers them (bufferDebug) with a 1 MB cap. Log() lines (exit save, errors) always go
+    // out and are flushed at once.
+    inline static bool debugEnabled = true;
+    inline static bool bufferDebug = false;
+    inline static long capBytes = 0;
 
     static void Setup(const String& path) {
         logPath = path;
         delete debug;
         debug = new DebugWriter(IO::Path::Combine(logPath, "Debugging.txt"));
+        debug->capBytes = capBytes;
     }
     static String GetPath() { return logPath; }
     static void SetExitFunc(VoidDelegate f) { ExitFuncCallback = std::move(f); }
@@ -81,12 +115,14 @@ struct Logger {
     }
     template <class... A>
     static void Debug(const String& fmt, const A&... args) {
+        if (!debugEnabled) return;
         String s = sizeof...(A) ? Format(fmt, args...) : fmt;
         Console(s);
-        if (debug) debug->WriteLine(s);
+        if (debug) debug->WriteLine(s, !bufferDebug);
     }
     template <class... A>
     static void DebugWrite(const String& fmt, const A&... args) {
+        if (!debugEnabled) return;
         String s = sizeof...(A) ? Format(fmt, args...) : fmt;
         ConsoleWrite(s);
         if (debug) debug->Write(s);

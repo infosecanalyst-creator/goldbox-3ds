@@ -25,6 +25,8 @@ Point the game at the folder containing your own `.DAX` files (on the 3DS:
 `sdmc:/3ds/goldbox/cotab/`). On the 3DS the program itself goes directly in
 `/3ds`, as `sdmc:/3ds/goldbox.3dsx` (`tools/3ds/deploy-3ds.bat` puts it there).
 
+Debug log (3DS): `sdmc:/3ds/goldbox/user/Logs/Debugging.txt` gets only start, exit-save and error lines; an empty `sdmc:/3ds/goldbox/debug.txt` turns on coab's full debug log, buffered and rolled over at 1 MB.
+
 ### Sound (optional)
 
 No sound samples are included. If you have your own copy of the sound samples

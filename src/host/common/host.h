@@ -12,6 +12,8 @@ struct Options {
     std::string userDir;           // logs + saves (defaults per platform)
     int64_t fixedSeed = 0;         // non-zero: deterministic RNG (for diff testing)
     bool consoleLog = false;       // echo coab's debug log to stdout
+    bool debugLog = true;          // coab's Debug() lines in Logs/Debugging.txt (3DS: debug.txt)
+    bool debugLogBuffered = false; // buffer them and cap the file at 1 MB (3DS)
 };
 
 // Runs coab's engine (seg001::__SystemInit + PROGRAM) on the calling thread.

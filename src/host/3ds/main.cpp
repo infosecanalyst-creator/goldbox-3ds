@@ -1603,6 +1603,11 @@ void EngineEntry(void*) {
     host::Options opt;
     opt.dataDir = "sdmc:/3ds/goldbox/cotab";
     opt.userDir = "sdmc:/3ds/goldbox/user";
+    // GB-07: coab's debug lines (Logs/Debugging.txt) only with sdmc:/3ds/goldbox/debug.txt,
+    // checked once here; then buffered and capped at 1 MB. Exit-save and error lines always.
+    if (FILE* f = std::fopen("sdmc:/3ds/goldbox/debug.txt", "rb")) { std::fclose(f); opt.debugLog = true; }
+    else opt.debugLog = false;
+    opt.debugLogBuffered = true;
     host::RunEngine(opt);
 }
 
