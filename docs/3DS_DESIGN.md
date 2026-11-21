@@ -98,4 +98,5 @@ the Krynn and Savage Frontier games, etc.
 
 ## Delivery
 - Installs over Wi-Fi only: build on the PC, FTP the .3dsx to
-  `sdmc:/3ds/goldbox/` with ftpd running; never ask for SD card swaps.
+  `sdmc:/3ds/goldbox.3dsx` (directly in `/3ds`; game data stays in
+  `sdmc:/3ds/goldbox/`) with ftpd running; never ask for SD card swaps.

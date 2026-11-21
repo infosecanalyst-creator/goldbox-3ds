@@ -1,6 +1,6 @@
 @echo off
 rem Installs goldbox-3ds on the 3DS over Wi-Fi (ftpd must be running on the 3DS).
-rem  - goldbox.3dsx            -> sdmc:/3ds/goldbox/goldbox.3dsx
+rem  - goldbox.3dsx            -> sdmc:/3ds/goldbox.3dsx (directly in /3ds)
 rem  - game data (first time)  -> sdmc:/3ds/goldbox/cotab/
 rem  - sounds (optional)       -> sdmc:/3ds/goldbox/sounds/
 rem Usage: deploy-3ds.bat <3ds-ip> [ftp-port]  (or set GOLDBOX_3DS_IP)
@@ -14,7 +14,7 @@ if "%PORT%"=="" set "PORT=5000"
 set "DATA=%~dp0..\..\..\data\cotab"
 
 echo Uploading goldbox.3dsx to %IP%:%PORT% ...
-curl -s --ftp-create-dirs -T goldbox.3dsx "ftp://%IP%:%PORT%/3ds/goldbox/goldbox.3dsx" || goto :ftpfail
+curl -s --ftp-create-dirs -T goldbox.3dsx "ftp://%IP%:%PORT%/3ds/goldbox.3dsx" || goto :ftpfail
 
 curl -s "ftp://%IP%:%PORT%/3ds/goldbox/cotab/" --list-only > "%TEMP%\gb3ds_list.txt" 2>nul
 findstr /i "GEO2.DAX" "%TEMP%\gb3ds_list.txt" > nul

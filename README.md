@@ -19,7 +19,8 @@ C# reimplementation of **Curse of the Azure Bonds**, translated line-for-line
 into C++17 so that it can be verified against coab and then extended.
 
 Point the game at the folder containing your own `.DAX` files (on the 3DS:
-`sdmc:/3ds/goldbox/cotab/`).
+`sdmc:/3ds/goldbox/cotab/`). On the 3DS the program itself goes directly in
+`/3ds`, as `sdmc:/3ds/goldbox.3dsx` (`tools/3ds/deploy-3ds.bat` puts it there).
 
 ### Sound (optional)
 
