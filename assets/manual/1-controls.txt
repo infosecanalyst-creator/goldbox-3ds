@@ -9,7 +9,7 @@ Every touch button also works with the buttons: a gold ring shows the button A w
 ## Buttons
 A: Enter (pick the highlighted choice).
 
-START: the menu: Resume, Manual, Journal and Exit Game (it asks first; save from the game itself: Encamp, then Save).
+START: the menu: Resume, Manual, Journal and Exit Game. Exit Game asks first and saves for you (see Saving and leaving).
 
 B: Esc (back out).
 
@@ -83,3 +83,22 @@ Raise the 3D slider for depth in the dungeon view: near walls just behind the fr
 The title menu waits on Play; the demo only runs if you pick Demo, and any button ends it.
 
 Create characters from the start menu, add them to the party, then choose Begin Adventuring.
+
+## Saving and leaving
+You can save from the game itself at any time it allows: Encamp, then Save, and pick a slot (A to H are yours).
+
+Slot J is kept for the exit save. Exit Game in the START menu asks "Exit the game?" and, while you are camping, on the wilderness map or in the 3D view, saves to slot J first ("Saving to slot J..."). To carry on later, choose Load Saved Game, then J. Closing the game from the HOME menu (HOME, then Close) saves to slot J the same way. Pressing HOME alone also saves to slot J, and sleep mode (closing the lid) does not.
+
+If the game cannot save (for example in the middle of an event, or when the SD card is full or locked) it says NOT SAVED or SAVE FAILED and asks "EXIT ANYWAY" or "NO". It never quits after a failed save without asking. NO takes you back to the game: finish the event, then exit again.
+
+A save is written to a temporary file first and only replaces the old save when it is complete, so a failed save leaves your last save as it was. The automap is saved the same way.
+
+If the game stops on an error, a GAME STOPPED screen shows the error and says your last save is unchanged. Press A to close it. The details are in user/Crash Log.txt.
+
+## Files and logs
+Program: sdmc:/3ds/goldbox.3dsx (directly in /3ds).
+Game files (your own .DAX files): sdmc:/3ds/goldbox/cotab/.
+Saves, automaps and logs: sdmc:/3ds/goldbox/user/.
+Optional sound samples: sdmc:/3ds/goldbox/sounds/.
+
+The log user/Logs/Debugging.txt gets only the start, exit-save and error lines. To record everything the game does, create an empty file called debug.txt in sdmc:/3ds/goldbox/. It slows the game a little and rolls over at 1 MB; delete the file to switch it off.
