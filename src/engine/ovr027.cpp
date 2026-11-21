@@ -617,8 +617,22 @@ char ovr027::sl_select_item(MenuItem& result_ptr, int& index_ptr,
         }
 
         // goldbox-3ds: publish the visible rows to the host (display-only).
-        platform::ListShow(startY, startX, endX,
-            Math::Min(listDisplayHeight, listCount - gbl::menuScreenIndex), index_ptr - gbl::menuScreenIndex);
+        // A heading in the first row ("Pick Class") is not a choice: it is left out, so the touch
+        // screen's six buttons are six choices (with it, the sixth choice, Ranger or Human, had
+        // no button until the highlight was moved down).
+        {
+            int listRow0 = startY;
+            int listRows = Math::Min(listDisplayHeight, listCount - gbl::menuScreenIndex);
+            int listHl = index_ptr - gbl::menuScreenIndex;
+            MenuItem firstShown = getStringListEntry(stringList, gbl::menuScreenIndex);
+            if (firstShown != nullptr && firstShown->Heading && listHl > 0 && listRows > 1)
+            {
+                listRow0++;
+                listRows--;
+                listHl--;
+            }
+            platform::ListShow(listRow0, startX, endX, listRows, listHl);
+        }
 
         bool speical_key;
         char input_key = displayInput(speical_key, false, 1, colors, displayString, extraTextString);

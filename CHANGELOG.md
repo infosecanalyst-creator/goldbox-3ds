@@ -2,6 +2,7 @@
 
 ## 2026-11-21
 
+- Lists with a heading (Pick Race, Pick Class...): the heading is no longer one of the six touch buttons, so the last choice (Human, Ranger) has a button straight away.
 - The code is smaller, which leaves more memory free on the console.
 - The manual explains the exit save (slot J), what happens when a save fails, where the files and logs live.
 
