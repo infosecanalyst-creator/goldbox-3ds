@@ -43,7 +43,7 @@ struct ovr025 {
     static String direction(int dir);
     static void display_map_position_time(); // camping_search
     static void RedrawCombatScreen(); // sub_68DC0
-    inline static Set unk_68DFA = New<Set_>(Array<int>{13, 27, 69, 83});
+    static Set unk_68DFA;
     static void selectAPlayer(Player& player, bool showExit, String prompt);
     static bool item_is_ranged_melee(Item item);
     static bool is_weapon_ranged(Player player); /* offset_above_1 */

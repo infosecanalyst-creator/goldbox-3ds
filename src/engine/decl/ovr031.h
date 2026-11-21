@@ -27,9 +27,9 @@ struct ovr031 {
     static constexpr int Row_J = 4; // byte_16E2E
     static void DrawAreaMap(int partyDir, int partyMapY, int partyMapX); /* sub_7100F */
     static void Draw3dWorldBackground();
-    inline static Array<byte> idxOffset = { 0, 2, 6, 10, 22, 38, 54, 110, 132, 154, 1 }; // seg600:0ADA
-    inline static Array<int> colCount = { 1, 1, 1, 3, 2, 2, 7, 2, 2, 1 }; // seg600:0AE4
-    inline static Array<int> rowCount = { 2, 4, 4, 4, 8, 8, 8, 11, 11, 2 }; // seg600:0AEE
+    static Array<byte> idxOffset; // seg600:0ADA
+    static Array<int> colCount; // seg600:0AE4
+    static Array<int> rowCount; // seg600:0AEE
     static void draw_3D_8x8_titles(int offsetIndex, int arg_2, int rowStart, int colStart); /* sub_71434 */
     static constexpr int MapSize = 16; // 16x16 so 0-15
     static bool MapCoordIsValid(int mapY, int mapX); /*sub_71542*/

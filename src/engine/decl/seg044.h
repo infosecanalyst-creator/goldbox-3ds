@@ -9,7 +9,7 @@ struct seg044 {
     static void SetPicture(bool On);
     static void SetAnimation(bool On);
     static void PlaySound(Sound arg_0); /*sub_120E0*/
-    inline static Array<bool> soundLoaded; // PORT-NOTE: was `static System.Media.SoundPlayer[] sounds;` (13 slots); hand-ported against platform::LoadSound/PlaySound/StopAllSounds.
+    static Array<bool> soundLoaded; // PORT-NOTE: was `static System.Media.SoundPlayer[] sounds;` (13 slots); hand-ported against platform::LoadSound/PlaySound/StopAllSounds.
     static void SoundInit();
 };
 

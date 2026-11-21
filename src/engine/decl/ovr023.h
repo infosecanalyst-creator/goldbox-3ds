@@ -5,124 +5,12 @@
 // ovr023.cs
 // ---------------------------------------------------------------------------
 struct ovr023 {
-    inline static Array<String> SpellNames = { /* AffectNames */
-                            "",
-                            "Bless",
-                            "Curse",
-                            "Cure Light Wounds",
-                            "Cause Light Wounds",
-                            "Detect Magic",
-                            "Protection from Evil",
-                            "Protection from Good",
-                            "Resist Cold",
-                            "Burning Hands",
-                            "Charm Person",
-                            "Detect Magic",
-                            "Enlarge",
-                            "Reduce",
-                            "Friends",
-                            "Magic Missile",
-                            "Protection From Evil",
-                            "Protection From Good",
-                            "Read Magic",
-                            "Shield",
-                            "Shocking Grasp",
-                            "Sleep",
-                            "Find Traps",
-                            "Hold Person",
-                            "Resist Fire",
-                            "Silence, 15' Radius",
-                            "Slow Poison",
-                            "Snake Charm",
-                            "Spiritual Hammer",
-                            "Detect Invisibility",
-                            "Invisibility",
-                            "Knock",
-                            "Mirror Image",
-                            "Ray of Enfeeblement",
-                            "Stinking Cloud",
-                            "Strength",
-                            "Animate Dead",
-                            "Cure Blindness",
-                            "Cause Blindness",
-                            "Cure Disease",
-                            "Cause Disease",
-                            "Dispel Magic",
-                            "Prayer",
-                            "Remove Curse",
-                            "Bestow Curse",
-                            "Blink",
-                            "Dispel Magic",
-                            "Fireball",
-                            "Haste",
-                            "Hold Person",
-                            "Invisibility, 10' Radius",
-                            "Lightning Bolt",
-                            "Protection From Evil, 10' Radius",
-                            "Protection From Good, 10' Radius",
-                            "Protection From Normal Missiles",
-                            "Slow",
-                            "Restoration",
-                            "",
-                            "Cure Serious Wounds",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "Cause Serious Wounds",
-                            "Neutralize Poison",
-                            "Poison",
-                            "Protection Evil, 10' Radius",
-                            "Sticks to Snakes",
-                            "Cure Critical Wounds",
-                            "Cause Critical Wounds",
-                            "Dispel Evil",
-                            "Flame Strike",
-                            "Raise Dead",
-                            "Slay Living",
-                            "Detect Magic",
-                            "Entangle",
-                            "Faerie Fire",
-                            "Invisibility to Animals",
-                            "Charm Monsters",
-                            "Confusion",
-                            "Dimension Door",
-                            "Fear",
-                            "Fire Shield",
-                            "Fumble",
-                            "Ice Storm",
-                            "Minor Globe Of Invulnerability",
-                            "Remove Curse",
-                            "Animate Dead",
-                            "Cloud Kill",
-                            "Cone of Cold",
-                            "Feeblemind",
-                            "Hold Monsters",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "Bestow Curse" };
-    inline static Array<String> LevelStrings = {
-                            "",
-                            "1st Level",
-                            "2nd Level",
-                            "3rd Level",
-                            "4th Level",
-                            "5th Level",
-                            "6th Level",
-                            "7th Level",
-                            "8th Level",
-                            "9th Level"
-                        };
+    static Array<String> SpellNames;
+    static Array<String> LevelStrings;
     static bool can_learn_spell(int spell_id, Player player); /* sub_5C01E */
-    inline static Set unk_5C1A2 = New<Set_>(Array<int>{1,2,3,4});
-    inline static Set asc_5C1D1 = New<Set_>(Array<int>{0, 67, 69, 76, 77, 83});
-    inline static Set unk_5C1F1 = New<Set_>(Array<int>{0, 69});
+    static Set unk_5C1A2;
+    static Set asc_5C1D1;
+    static Set unk_5C1F1;
     static byte spell_menu(int& index, SpellSource spellSource);
     static void add_spell_to_list(byte spell_id); /* sub_5C3ED */
     static void add_spell_to_learning_list(int spell_id); /* sub_5C5B9 */
@@ -137,8 +25,8 @@ struct ovr023 {
     static void sub_5D2E1(bool& arg_0, bool showCastingText, QuickFight quick_fight, int spell_id); // sub_5D2E1
     static void localSteppingPathInit(Point target, Point caster, SteppingPath path); /* sub_5D676 */
     static int find_players_on_path(SteppingPath path, List<int> player_list); /* sub_5D702 */
-    inline static Array<Point> unk_16D22 = { Point(-1, 0), Point(0, -1), Point(0, -1), Point(1, 0), Point(1, 0), Point(0, 1), Point(0, 1), Point(-1, 0) };
-    inline static Array<Point> unk_16D32 = { Point(1, 0), Point(1, 0), Point(0, 1), Point(0, 1), Point(-1, 0), Point(-1, 0), Point(0, -1), Point(0, -1) };
+    static Array<Point> unk_16D22;
+    static Array<Point> unk_16D32;
     static void BuildAreaDamageTargets(int max_range, int playerSize, Point targetPos, Point casterPos); // sub_5D7CF
     static void MultiTargetedSpell(String text, int save_bonus); // sub_5DB24
     static void CastTeamSpell(String text, CombatTeam team); // sub_5DCA0

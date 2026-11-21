@@ -12,7 +12,7 @@ using namespace cs::enum_ops;
 
 struct DaxCache {
 private:
-    inline static Dictionary<String, DaxFileCache> fileCache;
+    static Dictionary<String, DaxFileCache> fileCache;
 
 public:
     static Array<byte> LoadDax(String file_name, int block_id);

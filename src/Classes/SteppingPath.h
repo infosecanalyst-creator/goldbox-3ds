@@ -35,7 +35,7 @@ public:
     bool Step(); /* sub_7324C */
 
 private:
-    inline static Array<byte> directions{ 7, 0, 1, 6, 8, 2, 5, 4, 3, 8 };
+    static Array<byte> directions;
 
 public:
     void CalculateDeltas(); /* sub_731A5 */

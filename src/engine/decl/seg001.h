@@ -7,7 +7,7 @@
 struct seg001 {
     // PORT-NOTE: `internal static System.Threading.Thread EngineThread;` dropped; EngineStop() is hand-ported (platform::EngineStopped + throw cs::EngineAbort).
     using VoidDelegate = std::function<void()>;
-    inline static VoidDelegate EngineStoppedCallback;
+    static VoidDelegate EngineStoppedCallback;
     static void EngineStop();
     static void __SystemInit(VoidDelegate stoppedCallback);
     static void ConfigGame();

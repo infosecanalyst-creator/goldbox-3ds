@@ -22,7 +22,7 @@ struct ovr032 {
         std::unordered_map<uint32_t, MapReach> m;
         MapReach& operator()(int a, int b, int c) { return m[((uint32_t)a * 1250u + (uint32_t)b) * 2u + (uint32_t)c]; }
     };
-    inline static ReachCache mapReachCache;
+    static ReachCache mapReachCache;
     static MapReach MapCacheGet(Point p1, Point p2, bool ignoreWalls);
     static void canReachTarget(Point& target, Point attacker);
     static bool canReachTarget(int& range, Point target, Point attacker);

@@ -128,7 +128,7 @@ struct ovr013 {
     static void sub_3C975(Effect arg_0, object arg_2, Player target);
     static void sp_dispel_evil(Effect arg_0, object param, Player player);
     static void empty(Effect arg_0, object param, Player player);
-    inline static Dictionary<Affects, affectDelegate> affect_table = nullptr; // null until SetupAffectTables()
+    static Dictionary<Affects, affectDelegate> affect_table; // null until SetupAffectTables()
     static void SetupAffectTables(); // setup_spells2
     static void CallAffectTable(Effect add_remove, object parameter, Player player, Affects affect); /* sub_630C7 */
 };

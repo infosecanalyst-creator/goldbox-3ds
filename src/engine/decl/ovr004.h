@@ -5,14 +5,7 @@
 // ovr004.cs
 // ---------------------------------------------------------------------------
 struct ovr004 {
-    inline static Array<String> codeWheel = {
-                                 "CWLNRTESSCEDCSHSISERRRNSHSSTSSNNHSHN",
-                                 "LAASRDAIILIDSUGADAEEOEGRLSELIITESOIO",
-                                 "LRUNIMMORIIGRRIUPTIIUELIMLHMIXACGRIL",
-                                 "Z0LIOHEUVNODSGEOGXYWISIOCRARLRARRHOI",
-                                 "AMTELRLUIYNAEOOITOUELRREREUIMADPPFAB",
-                                 "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
-                             };
+    static Array<String> codeWheel;
     static void copy_protection();
 };
 

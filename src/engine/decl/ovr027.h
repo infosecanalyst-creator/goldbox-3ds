@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 struct ovr027 {
     static MenuItem getStringListEntry(List<MenuItem> list, int index);
-    inline static Set highlightable_text = New<Set_>(Array<int>{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'});
+    static Set highlightable_text;
     class highlight_ {
     public:
         int start = -1;
@@ -27,9 +27,9 @@ struct ovr027 {
 
     static HighlightSet BuildInputKeys(String menuText, int& highlighCount);
     static void display_highlighed_text(int highlighed_word, int highlightFgColor, String text, int xOffset, int fgColor, HighlightSet highlights); /* sub_6C1E9 */
-    inline static Set alpha_number_input = New<Set_>(Array<int>{' ', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'}); //unk_6C398
-    inline static Set number_input = New<Set_>(Array<int>{'1', '2', '3', '4', '5', '6', '7', '8', '9', '\\'}); //unk_6C3B8
-    inline static Array<char> keypad_ctrl_codes = { 'O', 'P', 'Q', 'K', ' ', 'M', 'G', 'H', 'I' };
+    static Set alpha_number_input; //unk_6C398
+    static Set number_input; //unk_6C3B8
+    static Array<char> keypad_ctrl_codes;
     static char displayInput(bool useOverlay, byte arg_6, MenuColorSet colors, String displayInputString, String displayExtraString);
     static char displayInput(bool& specialKeyPressed, bool useOverlay, byte accept_ctrlkeys, MenuColorSet colors, String displayInputString, String displayExtraString);
     static void ClearPromptArea(); // redraw_screen

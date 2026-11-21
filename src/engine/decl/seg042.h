@@ -9,7 +9,7 @@ struct seg042 {
     static void delete_file(String fileString);
     static bool find_and_open_file(File& file_ptr, bool noError, String full_file_name);
     static bool file_find(String filePath);
-    inline static Array<char> unk_16FA9 = { ' ', '.', '*', ',', '?', '/', '\\', ':', ';', '|' };
+    static Array<char> unk_16FA9;
     static String clean_string(String s);
     static bool setupDaxFiles(IO::BinaryReader& fileA, IO::BinaryReader& fileB, short& arg_8, String file_name);
     static void load_decode_dax(Array<byte>& out_data, short& decodeSize, int block_id, String file_name);

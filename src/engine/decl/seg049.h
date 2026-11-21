@@ -7,12 +7,12 @@
 struct seg049 {
     inline static byte skipReadFlag = 0;
     static void SysDelay(int milliseconds);
-    inline static Queue<ushort> keysPressed;
-    inline static cs::Mutex keysPressedLock; // PORT-NOTE: C# `lock (keysPressed)`
+    static Queue<ushort> keysPressed;
+    static cs::Mutex keysPressedLock; // PORT-NOTE: C# `lock (keysPressed)`
     // PORT-NOTE: C# `static Semaphore WaitForKey = new Semaphore(0, 1);` -> binary semaphore built from
     // a mutex + condition variable + count (0 or 1). Hand-ported.
-    inline static cs::Mutex WaitForKeyLock;
-    inline static cs::CondVar WaitForKey;
+    static cs::Mutex WaitForKeyLock;
+    static cs::CondVar WaitForKey;
     inline static int WaitForKeyCount = 0;
     static void AddKey(ushort key);
     static ushort int_check_keyPressed();
@@ -25,7 +25,7 @@ struct seg049 {
     // goldbox-3ds: EXIT GAME's suspend save (rule 17). The host asks; the engine thread saves at its
     // next key wait (a point where the game itself waits for the player). 0 none, 1 asked, 2 saved,
     // 3 not possible here (combat, shop, start menu, no party), 4 saving.
-    inline static volatile int suspendSave = 0;
+    static volatile int suspendSave;
     static void RequestSuspendSave();
 };
 

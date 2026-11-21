@@ -24,9 +24,7 @@ struct ovr014 {
     static int ThisRoundActionCount(int halfActionsLeft); // sub_3EF0D
     static bool TrySweepAttack(Player target, Player attacker); // sub_3EF3D
     static bool CanSeeTargetA(Player targetA, Player targetB); //sub_3F143
-    inline static Array<sbyte> unk_16679 = { 0,
-        17, 17,  0,  0,  1, 17,  0,  0, 32, 32,
-        10,  7,  4,  1,  1,  0,  0, -1, -1, -1 }; /*seg600:0369*/
+    static Array<sbyte> unk_16679; /*seg600:0369*/
     static void turns_undead(Player player);
     static bool FindLowestE9Target(Player& output, Player player); /* sub_3F433 */
     static bool AttackTarget01(Item item, int arg_8, Player target, Player attacker); // sub_3F4EB
@@ -34,7 +32,7 @@ struct ovr014 {
     static bool AttackTarget(Item rangedWeapon, int attackType, Player target, Player attacker); // sub_3F9DB
     static int RangedDefenseBonus(Player target, Player attacker); /* sub_3FCED */
     static bool find_healing_target(Player& target, Player healer); /* sub_3FDFE */
-    inline static Array<Affects> unk_18ADB = { Affects::bless, Affects::snake_charm, Affects::paralyze, Affects::sleep, Affects::helpless }; // seg600:27CB first is filler (off by 1)
+    static Array<Affects> unk_18ADB; // seg600:27CB first is filler (off by 1)
     static bool sub_4001C(DownedPlayerTile arg_0, bool canTargetEmptyGround, QuickFight quick_fight, int spellId);
     static bool target(QuickFight quick_fight, int spellId);
     static void spell_menu3(bool& casting_spell, QuickFight quick_fight, int spell_id);
@@ -46,12 +44,12 @@ struct ovr014 {
     static bool can_attack_target(Player target, Player attacker); /* sub_40F1F */
     static char aim_sub_menu(bool showTarget, bool showRange, int maxRange, Player target, Player attacker); /* Aim_menu */
     static bool sub_411D8(DownedPlayerTile arg_0, bool showRange, Player target, Player attacker);
-    inline static Set asc_41342 = New<Set_>(Array<int>{0, 69, 84});
+    static Set asc_41342;
     static bool Target(DownedPlayerTile arg_0, bool allowTarget, bool canTargetEmptyGround, bool showRange, int maxRange, Player target, Player player01);
     static Array<SortedCombatant> copy_sorted_players(Player player); /* sub_4188F */
     static Player step_combat_list(bool arg_2, int step, int& list_index, Point& attackerPos, Array<SortedCombatant> sorted_list); /* sub_41932 */
-    inline static Set unk_41AE5 = New<Set_>(Array<int>{0, 69});
-    inline static Set unk_41B05 = New<Set_>(Array<int>{71, 72, 73, 75, 77, 79, 80, 81});
+    static Set unk_41AE5;
+    static Set unk_41B05;
     static bool aim_menu(DownedPlayerTile arg_0, bool allowTarget, bool canTargetEmptyGround, bool showRange, int maxRange, Player attacker); /* sub_41B25 */
     static bool find_target(bool clear_target, byte arg_2, int max_range, Player player); /* sub_41E44 */
     static void engulfs(Effect arg_0, object param, Player attacker);

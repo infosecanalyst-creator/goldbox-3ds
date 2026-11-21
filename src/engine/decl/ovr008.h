@@ -25,9 +25,9 @@ struct ovr008 {
     static String DecompressString(Array<byte> data);
     static void LoadCompressedEclString(int strIndex, int inputLength);
     static void vm_CopyStringFromMemory(ushort location, byte strIndex); // sub_31421
-    inline static Set unk_31673 = New<Set_>(Array<int>{48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90});
+    static Set unk_31673;
     static String buildMenuStrings(String& MenuString);
-    inline static Set validkeys = New<Set_>(Array<int>{48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90}); // unk_3178A
+    static Set validkeys; // unk_3178A
     static int sub_317AA(bool useOverlay, bool acceptReturn, MenuColorSet colors, String displayString, String extraString);
     static int VertMenuSelect(int index, bool menuRedraw, bool showExit, List<MenuItem> list, sbyte endY, sbyte endX, int startY, sbyte startX);
     static void compare_strings(String string_a, String string_b); /* sub_3193B */

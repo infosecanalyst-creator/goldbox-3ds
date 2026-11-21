@@ -5,10 +5,8 @@
 // ovr005.cs
 // ---------------------------------------------------------------------------
 struct ovr005 {
-    inline static Array<Affects> disease_types = {  Affects::helpless,  Affects::cause_disease_1,
-                                            Affects::weaken, Affects::cause_disease_2,
-                                            Affects::animate_dead, Affects::affect_39 };
-    inline static Array<String> temple_sl = { "Cure Blindness", "Cure Disease", "Cure Light Wounds", "Cure Serious Wounds", "Cure Critical Wounds", "Heal", "Neutralize Poison", "Raise Dead", "Remove Curse", "Stone to Flesh", "Exit" };
+    static Array<Affects> disease_types;
+    static Array<String> temple_sl;
     static bool CastCureAnyway(String text);
     static bool buy_cure(int cost, String cure_name); /* buy_cure */
     static void cure_blindness();

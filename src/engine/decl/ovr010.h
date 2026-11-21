@@ -11,10 +11,7 @@ struct ovr010 {
     static bool ShouldCastSpellX(int minPriority, int spellId, Player attacker); // sub_353B1
     static bool sub_354AA(Player player);
     static bool sub_3560B(Player player);
-    inline static Array2<int> data_2B8 = {
-            {8, 7, 6, 1, 2, 8}, {8, 1, 2, 7, 6, 7}, {7, 1, 8, 6, 2, 1}, {1, 7, 8, 2, 6, 8}, {8, 7, 6, 5, 4, 8},
-            {8, 1, 2, 3, 4, 8}, {8, 4, 6, 2, 8, 6}, {6, 4, 0, 8, 0, 6}, {6, 2, 8, 2, 0, 4}, {4, 0, 0, 2, 6, 2},
-            {2, 2, 0, 4, 4, 4} /*, {4, 2, 6, 6}*/ }; /* actual from seg600:02BD - seg600:02F8 */
+    static Array2<int> data_2B8; /* actual from seg600:02BD - seg600:02F8 */
     static bool CanMove(bool& groundClear, int baseDirecction, int dirStep, Player player); // sub_3573B
     static void moralFailureEscape(Player player); // sub_359D1
     inline static int byte_1AB18 = 0; // byte_1AB18

@@ -7,7 +7,7 @@
 struct ovr024 {
     static void KillPlayer(String text, Status new_health_status, Player player); // sub_63014
     static void remove_affect(Affect affect, Affects affect_id, Player player);
-    inline static Array<Affects> unk_6325A = { Affects::silence_15_radius, Affects::prot_from_evil_10_radius, Affects::prot_from_good_10_radius, Affects::prayer };
+    static Array<Affects> unk_6325A;
     static void calc_affect_effect(Affects affect_type, Player player);
     static void CheckAffectsEffect(Player player, CheckType type); // work_on_00
     static Player sub_63D03(Array<byte> directions, int arraySize, List<GasCloud> list, Point mapPos); // sub_63D03

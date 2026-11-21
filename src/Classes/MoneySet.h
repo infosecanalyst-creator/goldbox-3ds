@@ -18,9 +18,9 @@ struct Money {
     static constexpr int Gems = 5;
     static constexpr int Jewelry = 6;
 
-    inline static Array<String> names{ "Copper", "Silver", "Electrum", "Gold", "Platinum", "Gems", "Jewelry" };
+    static Array<String> names;
 
-    inline static Array<int> per_copper{ 1, 10, 100, 200, 1000 };
+    static Array<int> per_copper;
 };
 
 class MoneySet_ : public IDataIO {

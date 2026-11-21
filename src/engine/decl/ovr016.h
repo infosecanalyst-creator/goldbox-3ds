@@ -16,18 +16,18 @@ struct ovr016 {
     static bool rest_menu();
     static void memorize_spell();
     static void scribe_spell();
-    inline static Dictionary<Affects, String> EffectNameMap;
+    static Dictionary<Affects, String> EffectNameMap;
     static void BuildEffectNameMap();
     static void DisplayMagicEffects();
     static bool magic_menu();
     static void MoveCurrentPlayerUp(); // sub_4558D
     static void MoveCurrentPlayerDown(); // sub_456E5
-    inline static Array<String> reorderStrings = { "Select Exit", "Place Exit" }; //seg600_04A6
-    inline static Set reorderSet = New<Set_>(Array<int>{13,80,83});
+    static Array<String> reorderStrings; //seg600_04A6
+    static Set reorderSet;
     static void reorder_party();
     static void DropPlayer(); // drop_player
     static void game_speed();
-    inline static Set AlterSet = New<Set_>(Array<int>{0, 69});
+    static Set AlterSet;
     static void alter_menu();
     static int CalculateInitialHealing(); // sub_45F22
     static void CalculateHealing(int& healingAvailable, int numCureLight, int numCureSerious, int numCureCritical); // sub_45FDD
@@ -35,7 +35,7 @@ struct ovr016 {
     static void CalculateTimeAndSpellNumbers(int& numCureCritical, int& numCureSerious, int& numCureLight); //sub_460ED
     static void DoTeamHealing(int& healingAvailable); //sub_46280
     static bool FixTeam(); // fix_menu
-    inline static Set unk_463F4 = New<Set_>(Array<int>{0, 69});
+    static Set unk_463F4;
     static bool MakeCamp(); // make_camp
 };
 

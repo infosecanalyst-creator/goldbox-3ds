@@ -316,7 +316,7 @@ public:
     Affect GetAffect(Affects type);
 
 private:
-    inline static Array<Affects> held_affects{Affects::snake_charm, Affects::paralyze, Affects::sleep, Affects::helpless};
+    static Array<Affects> held_affects;
 
 public:
     bool IsHeld();

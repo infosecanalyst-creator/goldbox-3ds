@@ -5,10 +5,10 @@
 // ovr030.cs
 // ---------------------------------------------------------------------------
 struct ovr030 {
-    inline static Array<byte> fadeOldColors = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
-    inline static Array<byte> fadeNewColors = { 12, 12, 12, 12, 4, 5, 6, 7, 12, 12, 10, 12, 12, 12, 14, 12 };
-    inline static Array<byte> transparentOldColors = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
-    inline static Array<byte> transparentNewColors = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0, 14, 15 };
+    static Array<byte> fadeOldColors;
+    static Array<byte> fadeNewColors;
+    static Array<byte> transparentOldColors;
+    static Array<byte> transparentNewColors;
     static void DrawMaybeOverlayed(DaxBlock dax_block, bool useOverlay, int rowY, int colX); // sub_7000A
     static void load_pic_final(DaxArray& daxArray, byte masked, byte block_id, String file_name);
     static void DaxArrayFreeDaxBlocks(DaxArray animation);

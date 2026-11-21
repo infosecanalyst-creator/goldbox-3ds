@@ -6,13 +6,7 @@
 // ---------------------------------------------------------------------------
 struct ovr033 {
     static constexpr int MaxSize = 4;
-    inline static Array<Array<Point>> Steps = {
-            Array<Point>(0),
-            Array<Point>{ Point( 0, 0 ) },
-            Array<Point>{ Point( 0, 0 ), Point(  0,  1 ) },
-            Array<Point>{ Point( 0, 0 ), Point(  1,  0 ) },
-            Array<Point>{ Point( 0, 0 ), Point(  1,  0 ), Point( 0,  1 ), Point(  1,  1 ) }
-        };
+    static Array<Array<Point>> Steps;
     static Array<Point> GetSizeBasedMapDeltas(int size); /*sub_7400F*/
     static Array<Point> BuildSizeMap(int size, Point pos);
     static void calculatePlayerScreenPositions(); /* sub_74077 */
@@ -21,7 +15,7 @@ struct ovr033 {
     static void sub_7416E(Point pos); // sub_7416E
     static void DrawPlayerIconIfOnScreen(int player_index);
     static void RedrawPosition(Point pos); // sub_7431C
-    inline static Array2<int> mapToPlayerIndex = Array2<int>(Point::MapMaxY, Point::MapMaxX);
+    static Array2<int> mapToPlayerIndex;
     static void setup_mapToPlayerIndex_and_playerScreen(); /* sub_743E7 */
     static int PlayerIndexAtMapXY(int posY, int posX); /* sub_74505 */
     static void AtMapXY(int& groundTile, int& playerIndex, Point pos);

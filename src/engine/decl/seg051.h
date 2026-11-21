@@ -5,7 +5,7 @@
 // seg051.cs
 // ---------------------------------------------------------------------------
 struct seg051 {
-    inline static cs::Random random_number{0}; // PORT-NOTE: C# is null until Randomize(); cs::Random has no default ctor. Spelled cs::Random because seg051::Random(...) methods hide the type name.
+    static cs::Random random_number; // PORT-NOTE: C# is null until Randomize(); cs::Random has no default ctor. Spelled cs::Random because seg051::Random(...) methods hide the type name.
     static String Copy(int CopyLen, int StartAt, String InString);
     static byte Random(byte arg_0);
     static int Random(int arg_0);

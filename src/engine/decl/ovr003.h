@@ -59,11 +59,11 @@ struct ovr003 {
     static void CMD_Dump(); // sub_29271
     static void CMD_FindSpecial(); // sub_292A5
     static void CMD_DestroyItems(); // sub_292F9
-    inline static Dictionary<int, CmdItem> CommandTable;
+    static Dictionary<int, CmdItem> CommandTable;
     static void SetupCommandTable();
     static void SkipNextCommand();
     static void RunEclVm(ushort offset); // sub_29607
-    inline static volatile int eclDepth = 0;   // goldbox-3ds (GB-04): ECL scripts running right now
+    static volatile int eclDepth;   // goldbox-3ds (GB-04): ECL scripts running right now
     static void sub_29677();
     static void sub_29758();
 };
