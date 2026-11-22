@@ -687,12 +687,23 @@ std::vector<platform::MenuItem> VisibleWords(const std::vector<platform::MenuIte
     // GOLDBOX-Q2: the cell must hold the word's own first letter. The start menu's keys
     // (C D M T H V A R) are drawn black on black; blank cells left by the line before used to
     // pass as "visible", so eight bare letter buttons showed until the first redraw.
+    // A menu whose keys are all bare letters is such a hidden-key menu: its choices are the
+    // lines above (FindHotLines), it has no words. Otherwise every letter of the word must be
+    // on the line: for a frame or two after a new menu is published the line still holds the
+    // old menu's text, and a single matching letter there ("t" of "Exit" for the hidden key T)
+    // put a stray button on the screen.
+    bool bare = !items.empty();
+    for (auto& it : items) bare &= it.label.size() == 1;
+    if (bare) return out;
     LightLock_Lock(&frameLock);
     for (auto& it : items) {
-        if ((unsigned)it.col >= 40u || it.label.empty()) continue;
-        const char ch = textMap[24][it.col].ch;
-        if (ch == ' ' || std::toupper((unsigned char)ch) != std::toupper((unsigned char)it.label[0])) continue;
-        if (CellShows(24, it.col)) out.push_back(it);
+        if (it.col < 0 || it.label.empty() || it.col + (int)it.label.size() > 40) continue;
+        bool same = CellShows(24, it.col);
+        for (size_t i = 0; same && i < it.label.size(); i++) {
+            const char ch = textMap[24][it.col + i].ch;
+            same = std::toupper((unsigned char)ch) == std::toupper((unsigned char)it.label[i]);
+        }
+        if (same) out.push_back(it);
     }
     LightLock_Unlock(&frameLock);
     return out;
@@ -2353,8 +2364,7 @@ int main(int argc, char** argv) {
         std::string sig;
         std::vector<HotLine> hot;
         std::vector<platform::MenuItem> words;
-        bool rosterVisible = false;
-        u64 at = 0;
+        u64 hotAt = 0, wordsAt = 0, rosterAt = 0;
     } cache;
     u64 nextRepeat = 0;
     uint16_t heldKey = 0;
@@ -2502,19 +2512,22 @@ int main(int argc, char** argv) {
             // keep the last choices for the same menu so buttons don't flicker.
             std::string sig = cx.prompt + "|";
             for (auto& it : cx.items) sig += it.key;
-            if (sig == cache.sig && now < cache.at + 500) {
-                if (cx.hot.empty() && !cx.list.active) cx.hot = cache.hot;
-                if (cx.words.empty()) cx.words = cache.words;
-                if (!cx.rosterVisible) cx.rosterVisible = cache.rosterVisible;
-            }
-            if (sig != cache.sig) hotFocus = 0;
-            if (sig != cache.sig || !cx.hot.empty() || !cx.words.empty() || cx.rosterVisible) {
+            // Each kind of choice is cached on its own and only renewed by what was read from
+            // the screen this frame: choices taken from the cache run out after 500 ms (they used
+            // to keep themselves alive, so one stray word stayed for as long as the menu did).
+            if (sig != cache.sig) {
                 cache.sig = sig;
-                cache.hot = cx.hot;
-                cache.words = cx.words;
-                cache.rosterVisible = cx.rosterVisible;
-                cache.at = now;
+                cache.hot.clear();
+                cache.words.clear();
+                cache.hotAt = cache.wordsAt = cache.rosterAt = 0;
+                hotFocus = 0;
             }
+            if (!cx.hot.empty()) { cache.hot = cx.hot; cache.hotAt = now; }
+            else if (!cx.list.active && now < cache.hotAt + 500) cx.hot = cache.hot;
+            if (!cx.words.empty()) { cache.words = cx.words; cache.wordsAt = now; }
+            else if (now < cache.wordsAt + 500) cx.words = cache.words;
+            if (cx.rosterVisible) cache.rosterAt = now;
+            else if (now < cache.rosterAt + 500) cx.rosterVisible = true;
             if (hotFocus >= (int)cx.hot.size()) hotFocus = 0;
         }
         bool hotMenu = !overlay && !cx.hot.empty() && !cx.list.active;
