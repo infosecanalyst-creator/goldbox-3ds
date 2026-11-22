@@ -687,17 +687,14 @@ std::vector<platform::MenuItem> VisibleWords(const std::vector<platform::MenuIte
     // GOLDBOX-Q2: the cell must hold the word's own first letter. The start menu's keys
     // (C D M T H V A R) are drawn black on black; blank cells left by the line before used to
     // pass as "visible", so eight bare letter buttons showed until the first redraw.
-    // A menu whose keys are all bare letters is such a hidden-key menu: its choices are the
-    // lines above (FindHotLines), it has no words. Otherwise every letter of the word must be
-    // on the line: for a frame or two after a new menu is published the line still holds the
-    // old menu's text, and a single matching letter there ("t" of "Exit" for the hidden key T)
-    // put a stray button on the screen.
-    bool bare = !items.empty();
-    for (auto& it : items) bare &= it.label.size() == 1;
-    if (bare) return out;
+    // The engine says which menus are hidden-key menus (drawn black on black): those have no
+    // words, their choices are the lines above (FindHotLines). Otherwise every letter of the
+    // word must be on the line: for a frame or two after a new menu is published the line still
+    // holds the old menu's text, and a single matching letter there ("t" of "Exit" for the
+    // hidden key T) put a stray button on the screen.
     LightLock_Lock(&frameLock);
     for (auto& it : items) {
-        if (it.col < 0 || it.label.empty() || it.col + (int)it.label.size() > 40) continue;
+        if (it.hidden || it.col < 0 || it.label.empty() || it.col + (int)it.label.size() > 40) continue;
         bool same = CellShows(24, it.col);
         for (size_t i = 0; same && i < it.label.size(); i++) {
             const char ch = textMap[24][it.col + i].ch;

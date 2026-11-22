@@ -46,6 +46,9 @@ struct MenuItem {
     int col = 0;
     int width = 0;
     int index = 0;  // the word's number in the engine's menu (see MenuHighlight)
+    // The engine draws this menu's words black on black (the start menu's key list
+    // "C D M T H V A R ..."): they are keys only, never words to show as buttons.
+    bool hidden = false;
 };
 void MenuShow(const std::string& prompt, const std::vector<MenuItem>& items, bool acceptsDirections);
 void MenuHide();

@@ -138,7 +138,7 @@ char ovr027::displayInput(bool& specialKeyPressed, bool useOverlay, byte accept_
             if (st < 0 || st >= displayInputString.Length()) continue;
             if (en >= displayInputString.Length()) en = displayInputString.Length() - 1;
             String label = displayInputString.Substring(st, Math::Max(1, en - st + 1)).Trim();
-            items.push_back({label, displayInputString[st], displayExtraString.Length() + st, en - st + 1, w});
+            items.push_back({label, displayInputString[st], displayExtraString.Length() + st, en - st + 1, w, !var_8F});
         }
         platform::MenuShow(displayExtraString, items, accept_ctrlkeys != 0);
     }
