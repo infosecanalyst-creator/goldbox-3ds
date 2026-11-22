@@ -9,9 +9,9 @@ Every touch button also works with the buttons: a gold ring shows the button A w
 ## Buttons
 A: Enter (pick the highlighted choice).
 
-START: the menu: Resume, Manual, Journal and Exit Game. Exit Game asks first and saves for you (see Saving and leaving).
+START: the menu: Resume, Save, Manual, Journal and Exit Game. It opens any time, also while you type. Exit Game asks first, and saves for you when the party is in the world (see Saving and leaving).
 
-B: Esc (back out).
+B: Esc (back out). On a Yes / No question B answers No. (Only "Save this character?" waits for a real Yes or No.)
 
 X: Yes.
 
@@ -23,7 +23,7 @@ L / R: previous / next party member. In a list, the D-Pad moves the highlight. I
 
 C-Stick up / down: page up / down in long lists.
 
-ZR: use the touch-screen buttons with the D-Pad. The gold ring moves to the buttons (ESC, YES, NO, ENTER, KEYS, SWAP, BOOK and the game's choices); the D-Pad moves it, A presses the ringed button. B or ZR goes back without pressing anything. After a press the D-Pad walks again.
+ZR: use the touch-screen buttons with the D-Pad. The gold ring moves to the buttons (ESC, YES, NO, ENTER, KEYS, SWAP, BOOK and the game's choices; greyed ones are skipped); the D-Pad moves it, A presses the ringed button. B or ZR goes back without pressing anything. After a press the D-Pad walks again.
 
 ZL: swap screens, any time.
 
@@ -33,12 +33,14 @@ Left hand: open the manual (BOOK) and tap LEFT: OFF / ON at the bottom of its to
 ## The gold ring
 In menus and lists the D-Pad moves the game's highlight, and the gold ring sits on the matching big button; A presses it (it lights up and clicks, as a tap would).
 
-On the keyboard and the number pad the D-Pad moves the ring between the keys and A presses the ringed key. START is Enter.
+On the keyboard and the number pad the D-Pad moves the ring between the keys and A presses the ringed key. ENTER (OK on the number pad) is one of the keys.
 
 While you explore, the D-Pad walks, so the ring stays on the menu word the game has highlighted (A picks it). Press ZR to move the ring to any other button.
 
 ## Touch screen
-Tap a word on the game's menu line, a line in a menu, or an entry in a list to pick it. In a list with more than one action, the first tap highlights the entry and a second tap acts on it.
+With the big buttons (game on the top screen), one tap picks.
+
+With the game itself on the touch screen the lines are small, so a tap is forgiving: the first tap on a menu line or a list entry only moves the highlight there, and a second tap on the highlighted line picks it. A word on the game's bottom menu line is picked with one tap.
 
 Tap a name in the party list to select that character.
 
@@ -46,9 +48,9 @@ In the 3D view (game on the touch screen): tap the middle of the view to walk fo
 
 On "press enter" pages, tap anywhere (or the CONTINUE button) to go on.
 
-The strip at the bottom: ESC, YES, NO, ENTER, KEYS (keyboard), SWAP and BOOK (this manual).
+The strip at the bottom: ESC, YES, NO, ENTER, KEYS (keyboard), SWAP and BOOK (this manual). A key the game is not asking for is grey and does nothing; YES and NO are grey when the big buttons above already show them.
 
-## Exploring and the automap
+## Exploring
 While you explore, the touch screen shows an automap of the area: squares you have visited, walls (white), doors (gold) and an arrow for where you face. The map is remembered for each area.
 
 The menu words (Area, Cast, View, Encamp, Search, Look) are big buttons beside the map.
@@ -64,13 +66,13 @@ If you swap the fight to the top screen (ZL), the touch screen becomes a touchpa
 
 Hold a diagonal on the D-Pad or Circle Pad to move diagonally.
 
-## Amounts, names and typing
+## Typing and amounts
 When the game asks "How much...", a number pad opens: ALL takes the most you can, CLEAR starts over, OK confirms, CANCEL backs out.
 
 When the game wants a name or an answer, the keyboard opens and closes by itself. Naming a character has a RANDOM button.
 
-## The journal and this book
-The game sometimes tells you to read an entry in the Adventurer's Journal. When it does, the BOOK button shows the entry number (for example J.12); tap it to open that entry.
+## Journal and book
+The game sometimes tells you to read an entry in the Adventurer's Journal. When it does, the BOOK button shows the entry number (for example J.12); tap it to open that entry. In the journal's grid of numbers, a gold corner marks the entries the game has sent you to so far.
 
 In this book: the Circle Pad or C-Stick scrolls the text (hold to keep scrolling), or drag the stylus up or down on the touch screen; the D-Pad moves between the section buttons, and a section opens as you pick it; L / R go to the previous / next section (past the last section, on to the next tab); tap a section or a tab to open it; B or START closes the book.
 
@@ -84,8 +86,16 @@ The title menu waits on Play; the demo only runs if you pick Demo, and any butto
 
 Create characters from the start menu, add them to the party, then choose Begin Adventuring.
 
+When a new character's numbers are rolled the game asks "Reroll stats?". The two buttons say what they do: REROLL rolls again, KEEP THESE goes on to the name. The highlight starts on KEEP THESE (the game's No).
+
+Questions that quit, drop, overwrite or throw something away start on No.
+
+Exit Game on the start menu asks the same "Exit the game?" as the START menu, with the ring on NO.
+
+If some of the game's files are missing from the card, a GAME FILES MISSING page lists them before the game starts.
+
 ## Saving and leaving
-You can save from the game itself at any time it allows: Encamp, then Save.
+SAVE in the START menu takes you to the game's own save list: while you explore it makes camp first (Encamp, then Save); in camp it opens Save. Pick a slot, A to I. SAVE is grey where the game cannot be saved (the start menu, shops, combat, in the middle of an event). You can also do it by hand: Encamp, then Save.
 
 Slot J is kept for the exit save. Exit Game in the START menu asks "Exit the game?" and, while you are camping, on the wilderness map or in the 3D view, saves to slot J first ("Saving to slot J..."). To carry on later, choose Load Saved Game, then J. Closing the game from the HOME menu (HOME, then Close) saves to slot J the same way. Pressing HOME alone also saves to slot J, and sleep mode (closing the lid) does not.
 

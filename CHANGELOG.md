@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-11-21 (audit fixes)
+
+- The start menu no longer shows eight stray letter buttons (C D M T H V A R) the first time it is drawn, and its four choices stay where they are between taps.
+- "Exit to DOS" is now "Exit Game" on the port's buttons and opens the port's own "Exit the game?" question (ring on NO, B cancels). The game's own quit question, when reached another way, starts on No.
+- B answers No on a Yes / No question. Questions that quit, drop, overwrite or discard start on No.
+- "Reroll stats?": the buttons read REROLL and KEEP THESE, and the highlight starts on KEEP THESE.
+- START opens the menu while the keyboard is up too (it used to be Enter and accepted a half-typed name).
+- SAVE in the START menu: makes camp and opens the game's save list; grey where the game cannot be saved.
+- The exit question is said once: question and buttons on the touch screen, the detail on the top screen.
+- Strip keys the game is not asking for are grey; YES / NO are not shown twice.
+- Game on the touch screen: the first tap on a small line highlights it, the second picks it. The dashboard marks the highlighted word in gold, says when a list has more entries, and shows the buttons while there is no party.
+- The journal marks the entries the game has sent you to (gold corner). Common scan errors in the journal text are cleaned as it is read.
+- Start-up check: lists missing game files instead of failing later.
+- The left-hand setting says so when the card refuses to save it.
+- Manual: shorter section names; the text matches all of the above.
+
 ## 2026-11-21
 
 - Lists with a heading (Pick Race, Pick Class...): the heading is no longer one of the six touch buttons, so the last choice (Human, Ranger) has a button straight away.

@@ -704,11 +704,22 @@ char ovr027::yes_no(MenuColorSet colors, String inputString)
 {
     char inputKey;
 
-    gbl::menuSelectedWord = 2;
+    // goldbox-3ds: a question that quits, discards or overwrites starts on No (the original
+    // started every question on Yes, so one Enter quit the game or rerolled for ever), and
+    // Esc answers No. "Save <name>?" keeps asking on Esc: there No would throw the answer away.
+    std::string q = inputString;
+    for (auto& ch : q) ch = (char)std::tolower((unsigned char)ch);
+    auto has = [&](const char* w) { return q.find(w) != std::string::npos; };
+    const bool startNo = has("quit") || has("reroll") || has("drop") || has("are you sure") || has("overwrite") || has("lose it") ||
+                         has("abort") || has("attack ally");
+    const bool escIsNo = !has("save");
+
+    gbl::menuSelectedWord = startNo ? 1 : 2;
 
     do
     {
         inputKey = displayInput(false, 0, colors, "Yes No", inputString);
+        if (inputKey == '\0' && escIsNo) inputKey = 'N';
 
     } while (inputKey != 'N' && inputKey != 'Y');
 

@@ -421,10 +421,20 @@ void LeftyLoad() {
     if (FILE* f = std::fopen(kLeftyFile, "rb")) { std::fclose(f); leftyOn = true; }
     leftyLoaded = true;
 }
+// GOLDBOX-Q4: the marker write is checked; when the card refuses it the book says so (the
+// setting still holds until the game is closed).
+bool leftySaveFailed = false;
 void LeftySet(bool on) {
     leftyOn = on;
-    if (on) { if (FILE* f = std::fopen(kLeftyFile, "wb")) std::fclose(f); }
-    else std::remove(kLeftyFile);
+    if (on) {
+        FILE* f = std::fopen(kLeftyFile, "wb");
+        leftySaveFailed = !f || std::fclose(f) != 0;
+    } else {
+        std::remove(kLeftyFile);
+        FILE* f = std::fopen(kLeftyFile, "rb");   // still there: the card refused
+        leftySaveFailed = f != nullptr;
+        if (f) std::fclose(f);
+    }
 }
 // Left-handed mode swaps the D-pad and A/B/X/Y: hint text names the button the player presses.
 const char* LH(const char* right, const char* left) {
@@ -460,6 +470,8 @@ struct Button {
     int listRow = -1;  // tap walks the list highlight here
     int member = -1;   // tap selects this party member
     bool selected = false;
+    bool disabled = false;  // greyed and inert: no tap, no ring (rule 2)
+    bool marked = false;    // a small gold corner (journal entries the game has pointed to)
 };
 
 // Hotkey menus have no highlight of their own; the host keeps one (D-pad
@@ -544,13 +556,16 @@ void DrawButtons(const Surface& s, const std::vector<Button>& bs, u64 now) {
     for (auto& b : bs) {
         bool lit = now < flashUntil && ((b.key && flashKey == b.key) || (b.listRow >= 0 && flashRow == b.listRow) ||
                                         (b.member >= 0 && flashMember == b.member));
-        RGB face = lit ? kBtnDown : b.selected ? RGB{90, 70, 20} : kBtn;
+        if (b.disabled) lit = false;
+        RGB face = b.disabled ? RGB{22, 28, 56} : lit ? kBtnDown : b.selected ? RGB{90, 70, 20} : kBtn;
         Fill(s, b.x, b.y, b.w, b.h, face);
-        Frame(s, b.x, b.y, b.w, b.h, b.selected ? kGold : kBtnEdge);
-        if (!lit) Fill(s, b.x + 1, b.y + b.h - 2, b.w - 2, 1, RGB{20, 30, 70});  // raised edge
+        Frame(s, b.x, b.y, b.w, b.h, b.disabled ? RGB{50, 60, 100} : b.selected ? kGold : kBtnEdge);
+        if (!lit && !b.disabled) Fill(s, b.x + 1, b.y + b.h - 2, b.w - 2, 1, RGB{20, 30, 70});  // raised edge
+        if (b.marked)   // gold corner, top right
+            for (int i = 0; i < 7; i++) Fill(s, b.x + b.w - 8 + i, b.y + 1, 7 - i, 1, kGold);
         int press = lit ? 1 : 0;  // label sinks while pressed
         std::string label = b.label;
-        RGB tc = lit ? kBlack : b.selected ? kGold : kWhite;
+        RGB tc = b.disabled ? RGB{90, 96, 120} : lit ? kBlack : b.selected ? kGold : kWhite;
         // Keep at least 4 px between the label and the button frame (labels like
         // "Journal" in a 60-px tab used to touch it); longer ones go narrow or wrap.
         int maxChars = std::max(1, (b.w - 8) / 8);
@@ -584,7 +599,7 @@ void DrawButtons(const Surface& s, const std::vector<Button>& bs, u64 now) {
 
 const Button* ButtonAt(const std::vector<Button>& bs, int px, int py) {
     for (auto& b : bs)
-        if (px >= b.x - 1 && px < b.x + b.w + 1 && py >= b.y - 2 && py < b.y + b.h + 2) return &b;
+        if (!b.disabled && px >= b.x - 1 && px < b.x + b.w + 1 && py >= b.y - 2 && py < b.y + b.h + 2) return &b;
     return nullptr;
 }
 
@@ -609,7 +624,7 @@ int NavMove(const std::vector<Button>& bs, int focus, int dx, int dy) {
     const Button& f = bs[focus];
     int cx = f.x + f.w / 2, cy = f.y + f.h / 2, best = -1, bestD = 1 << 30;
     for (int i = 0; i < (int)bs.size(); i++) {
-        if (i == focus) continue;
+        if (i == focus || bs[i].disabled) continue;
         int x = bs[i].x + bs[i].w / 2, y = bs[i].y + bs[i].h / 2;
         int along = dx ? (x - cx) * dx : (y - cy) * dy;
         int across = dx ? std::abs(y - cy) : std::abs(x - cx);
@@ -669,8 +684,17 @@ std::string RowText(int r, int c0, int c1) {
 // Menu words actually visible on the menu line (some menus use hidden keys).
 std::vector<platform::MenuItem> VisibleWords(const std::vector<platform::MenuItem>& items) {
     std::vector<platform::MenuItem> out;
-    for (auto& it : items)
-        if (CellShowsLocked(24, it.col)) out.push_back(it);
+    // GOLDBOX-Q2: the cell must hold the word's own first letter. The start menu's keys
+    // (C D M T H V A R) are drawn black on black; blank cells left by the line before used to
+    // pass as "visible", so eight bare letter buttons showed until the first redraw.
+    LightLock_Lock(&frameLock);
+    for (auto& it : items) {
+        if ((unsigned)it.col >= 40u || it.label.empty()) continue;
+        const char ch = textMap[24][it.col].ch;
+        if (ch == ' ' || std::toupper((unsigned char)ch) != std::toupper((unsigned char)it.label[0])) continue;
+        if (CellShows(24, it.col)) out.push_back(it);
+    }
+    LightLock_Unlock(&frameLock);
     return out;
 }
 
@@ -751,6 +775,36 @@ bool MenuSaysContinue(const std::string& prompt, const std::vector<platform::Men
     return all.find("continue") != std::string::npos;
 }
 
+// GOLDBOX-U7 / X1: the words the port draws for the game's own. "Exit to DOS" is a 1989 label
+// (the port's button goes to the port's own exit question); "Reroll stats? Yes No" trapped new
+// players, so its two answers say what they do.
+bool SameText(const std::string& a, const char* b) {
+    size_t n = std::strlen(b);
+    if (a.size() != n) return false;
+    for (size_t i = 0; i < n; i++)
+        if (std::tolower((unsigned char)a[i]) != std::tolower((unsigned char)b[i])) return false;
+    return true;
+}
+bool IsRerollPrompt(const std::string& prompt) {
+    std::string p = prompt;
+    for (auto& ch : p) ch = (char)std::tolower((unsigned char)ch);
+    return p.find("reroll") != std::string::npos;
+}
+std::string ShownLabel(const std::string& prompt, const std::string& label) {
+    if (SameText(label, "Exit to DOS")) return "Exit Game";
+    if (IsRerollPrompt(prompt)) {
+        if (SameText(label, "Yes")) return "REROLL";
+        if (SameText(label, "No")) return "KEEP THESE";
+    }
+    return label;
+}
+std::string ShownPrompt(const std::string& prompt) {
+    std::string p = prompt;
+    while (!p.empty() && p.back() == ' ') p.pop_back();
+    if (SameText(p, "Quit to DOS") || SameText(p, "quit TO DOS:")) return "Quit the game?";
+    return p;
+}
+
 // ---------------------------------------------------------------------------
 // Walking a highlight to a tapped entry (lists and the party list): one
 // Home/End per step, waiting for the game to show each step.
@@ -794,6 +848,7 @@ struct Context {
     MapState map;
     int state = 0;
     int entry = 0, entryMaxValue = 0;
+    int highlight = -1;  // the game's highlighted menu word (MenuItem::index)
 };
 
 // A tap on the game frame (game at 0,0 on the bottom screen).
@@ -813,9 +868,11 @@ uint16_t GameTap(int px, int py, const Context& cx, u64 now) {
     if (list.active && r >= list.row0 && r < list.row0 + list.rows && px >= list.col0 * 8 - 8 && px < (list.col1 + 1) * 8 + 8) {
         int target = r - list.row0;
         if (target == list.hl) return ListActionKey(cx.items);
+        // GOLDBOX-U1: the rows are 8 px tall here, so a tap only moves the highlight; a second tap
+        // on the highlighted row picks it. A near miss costs nothing.
         StartWalk(1, target, now);
         walk.row0 = list.row0;
-        walk.thenAct = ListVerbCount(cx.items) == 1;  // one verb (Select): pick it; else just highlight
+        walk.thenAct = false;
         flashRow = target;
         return 0;
     }
@@ -844,7 +901,11 @@ uint16_t GameTap(int px, int py, const Context& cx, u64 now) {
                 best = (int)i;
             }
         }
-        if (best >= 0 && bestDist <= 8) return cx.hot[best].key;
+        if (best >= 0 && bestDist <= 8) {
+            if (best == hotFocus) return cx.hot[best].key;
+            hotFocus = best;   // GOLDBOX-U1: first tap moves the gold frame, the second picks
+            return 0;
+        }
     }
     // Party list: select the tapped member.
     if (cx.rosterVisible && !list.active && r >= cx.roster.row0 && r < cx.roster.row0 + cx.roster.count &&
@@ -914,7 +975,7 @@ std::vector<Button> ChoiceButtonsRaw(const Context& cx) {
         int n = (int)cx.hot.size();
         if (n <= 6) {
             for (int i = 0; i < n; i++) {
-                Button bt{x0, y, w, 24, cx.hot[i].key, cx.hot[i].label};
+                Button bt{x0, y, w, 24, cx.hot[i].key, ShownLabel(cx.prompt, cx.hot[i].label)};
                 bt.selected = i == hotFocus;
                 b.push_back(bt);
                 y += 28;
@@ -922,7 +983,7 @@ std::vector<Button> ChoiceButtonsRaw(const Context& cx) {
         } else {  // up to 12 lines (the start menu) in two columns
             int bw = (w - 4) / 2, rows = (std::min(n, 12) + 1) / 2;
             for (int i = 0; i < n && i < 12; i++) {
-                Button bt{x0 + (i / rows) * (bw + 4), y + (i % rows) * 30, bw, 26, cx.hot[i].key, cx.hot[i].label};
+                Button bt{x0 + (i / rows) * (bw + 4), y + (i % rows) * 30, bw, 26, cx.hot[i].key, ShownLabel(cx.prompt, cx.hot[i].label)};
                 bt.selected = i == hotFocus;
                 b.push_back(bt);
             }
@@ -940,7 +1001,9 @@ std::vector<Button> ChoiceButtonsRaw(const Context& cx) {
         int bw = (w - (perRow - 1) * 4) / perRow;
         for (int i = 0; i < n && y + 28 <= 200; i++) {
             int col = i % perRow;
-            b.push_back({x0 + col * (bw + 4), y, bw, 26, keys::Letter(cx.words[i].key), cx.words[i].label});
+            // GOLDBOX-U4: the last word takes the spare cells of its row (no empty cell in the grid)
+            int ww = (i == n - 1) ? w - col * (bw + 4) : bw;
+            b.push_back({x0 + col * (bw + 4), y, ww, 26, keys::Letter(cx.words[i].key), ShownLabel(cx.prompt, cx.words[i].label)});
             if (col == perRow - 1 || i == n - 1) y += 30;
         }
     }
@@ -978,8 +1041,7 @@ void DrawDashboard(const Surface& top, const Context& cx) {
     Text(top, 8, 7, "CURSE OF THE AZURE BONDS", kGold);
 
     int y = 30;
-    std::string p = cx.prompt;
-    while (!p.empty() && p.back() == ' ') p.pop_back();
+    std::string p = ShownPrompt(cx.prompt);
     if (!p.empty()) {
         if (p.size() <= 23) {
             Text(top, 16, y, p, kCyan, 2);
@@ -1009,10 +1071,20 @@ void DrawDashboard(const Surface& top, const Context& cx) {
             std::string t = RowText(cx.list.row0 + i, cx.list.col0, cx.list.col1);
             TextFit(top, 24, y + (i - first) * 18, 368, t, i == cx.list.hl ? kGold : kWhite);
         }
+        // GOLDBOX-U2: say when the list goes on above or below the seven rows shown
+        // (in the header bar, right of the title: the rows below reach the divider)
+        const int above = first, below = std::max(0, cx.list.rows - first - 7);
+        if (above || below) {
+            std::string m = "more: ";
+            if (above) m += std::to_string(above) + " above";
+            if (above && below) m += ", ";
+            if (below) m += std::to_string(below) + " below";
+            Text(top, 392 - TextWidth(m), 7, m, kWhite);
+        }
     } else if (!cx.hot.empty()) {
         bool big = cx.hot.size() <= 7;
         for (size_t i = 0; i < cx.hot.size() && i < 12; i++) {
-            std::string t = cx.hot[i].label;
+            std::string t = ShownLabel(cx.prompt, cx.hot[i].label);
             if (big) {
                 TextFit(top, 24, y + (int)i * 18, 368, t, (int)i == hotFocus ? kGold : kWhite);
             } else {
@@ -1024,13 +1096,27 @@ void DrawDashboard(const Surface& top, const Context& cx) {
     } else if (!cx.words.empty()) {
         int shown = std::min<int>((int)cx.words.size(), 8);
         for (int i = 0; i < shown; i++) {
-            std::string label = cx.words[i].label;
-            TextFit(top, 16 + (i % 2) * 188, y + (i / 2) * 18, 180, label, kWhite);
+            std::string label = ShownLabel(cx.prompt, cx.words[i].label);
+            // GOLDBOX-U2: the word the game has highlighted (A picks it) is gold, with a mark
+            const bool hl = cx.words[i].index == cx.highlight;
+            TextFit(top, 16 + (i % 2) * 188, y + (i / 2) * 18, 180, (hl ? "> " : "  ") + label, hl ? kGold : kWhite);
         }
         y += ((shown + 1) / 2) * 18 + 4;
     } else {
-        Text(top, 16, y + 8, "Tap the game to continue", kGrey);
+        Text(top, 16, y + 8, "Tap the game to continue", kWhite);
         y += 24;
+    }
+    // GOLDBOX-U2: no party yet (the start menu, making a character): the free space holds the
+    // buttons, so the dashboard is never a near-empty screen.
+    if (cx.party.empty() && !cx.list.active && y <= 88) {
+        int hy = std::max(y + 8, 92);
+        Text(top, 16, hy, "BUTTONS", kGold);
+        Text(top, 16, hy + 14, LH("A      pick the gold choice (Enter)", "D-Rt   pick the gold choice (Enter)"), kGrey);
+        Text(top, 16, hy + 26, LH("B      back / No (Esc)", "D-Dn   back / No (Esc)"), kGrey);
+        Text(top, 16, hy + 38, LH("X      Yes        Y  delete while typing", "D-Lt   Yes     D-Up  delete while typing"), kGrey);
+        Text(top, 16, hy + 50, "START  menu: save, manual, journal, exit", kGrey);
+        Text(top, 16, hy + 62, "ZL     swap the screens", kGrey);
+        Text(top, 16, hy + 74, "ZR     ring to the touch buttons", kGrey);
     }
     // Party: name, HP, AC (from the game's own party data).
     if (!cx.list.active) {
@@ -1049,7 +1135,7 @@ void DrawDashboard(const Surface& top, const Context& cx) {
     }
 
     Fill(top, 16, 194, 368, 1, kBtnEdge);
-    Text(top, 16, 199, "Tap a choice on the game screen to pick it", kGrey);
+    Text(top, 16, 199, "Tap a choice to highlight it, tap again to pick", kGrey);
     Text(top, 16, 211, LH("D-pad move/choose  A Enter  B Esc  X Yes", "ABXY move  D-Rt Enter  D-Dn Esc  D-Lt Yes"), kGrey);
     // House style: the hint strip, 16 px at the bottom, gold.
     Fill(top, 0, 224, 400, 16, RGB{20, 30, 70});
@@ -1142,12 +1228,12 @@ int GameFocus(const std::vector<Button>& bs, const Context& cx, bool hotMenu, in
             if (bs[i].listRow == cx.list.hl) return i;
     if (hotMenu && hotFocus < (int)cx.hot.size())
         for (int i = 0; i < (int)bs.size(); i++)
-            if (bs[i].key == cx.hot[hotFocus].key && bs[i].label == cx.hot[hotFocus].label) return i;
+            if (bs[i].key == cx.hot[hotFocus].key && bs[i].label == ShownLabel(cx.prompt, cx.hot[hotFocus].label)) return i;
     if (highlight >= 0)
         for (auto& it : cx.items)
             if (it.index == highlight)
                 for (int i = 0; i < (int)bs.size(); i++)
-                    if (bs[i].key == keys::Letter(it.key) && bs[i].label == it.label) return i;
+                    if (bs[i].key == keys::Letter(it.key) && bs[i].label == ShownLabel(cx.prompt, it.label)) return i;
     return -1;
 }
 
@@ -1309,6 +1395,67 @@ struct Viewer {
     u64 nextScroll = 0, nextFocus = 0;
 } viewer;
 
+// GOLDBOX-X5: journal entries the game has told the player to read, kept in
+// user/journal-seen.txt (one number a line; temp file, checked, then renamed).
+bool journalSeen[256];
+constexpr const char* kSeenFile = "sdmc:/3ds/goldbox/user/journal-seen.txt";
+void LoadJournalSeen() {
+    FILE* f = std::fopen(kSeenFile, "rb");
+    if (!f) return;
+    int v;
+    while (std::fscanf(f, "%d", &v) == 1)
+        if (v > 0 && v < 256) journalSeen[v] = true;
+    std::fclose(f);
+}
+void MarkJournalSeen(int entry) {
+    if (entry <= 0 || entry >= 256 || journalSeen[entry]) return;
+    journalSeen[entry] = true;
+    const std::string tmp = std::string(kSeenFile) + ".tmp";
+    FILE* f = std::fopen(tmp.c_str(), "wb");
+    if (!f) return;
+    bool ok = true;
+    for (int i = 1; i < 256; i++)
+        if (journalSeen[i]) ok &= std::fprintf(f, "%d\n", i) > 0;
+    ok &= std::fclose(f) == 0;
+    if (ok) { std::remove(kSeenFile); ok = std::rename(tmp.c_str(), kSeenFile) == 0; }
+    if (!ok) std::remove(tmp.c_str());
+}
+
+// GOLDBOX-X4: the journal, manual and reference texts are made from the player's own scanned
+// PDFs, and the scan leaves the same few reading errors for everyone. Cleaned as the file is
+// read (the file on the card is not changed). Returns false for a line of scan rubbish.
+void ReplaceAll(std::string& t, const std::string& a, const std::string& b) {
+    for (size_t p = t.find(a); p != std::string::npos; p = t.find(a, p + b.size())) t.replace(p, a.size(), b);
+}
+bool CleanScanLine(std::string& t) {
+    if (t.empty() || t[0] == '#') return true;
+    // a short line that is mostly symbols ("Si sie/a'V)") is rubbish from a picture
+    if (t.size() <= 16) {
+        int sym = 0;
+        for (char ch : t) sym += std::strchr("/\\)(|_~^*<>{}[]=", ch) != nullptr;
+        if (sym >= 2 || (sym >= 1 && t.find(' ') != std::string::npos && t.size() <= 12)) return false;
+    }
+    // "Lam" at the start of a sentence is "I am"
+    for (const char* q : {"\"Lam ", "'Lam "}) ReplaceAll(t, q, std::string(1, q[0]) + "I am ");
+    if (t.rfind("Lam ", 0) == 0) t.replace(0, 3, "I am");
+    ReplaceAll(t, ". Lam ", ". I am ");
+    // a lost apostrophe: "Nacacia s return", "You re crazy", "She s escaped"
+    for (size_t p = t.find(" s "); p != std::string::npos; p = t.find(" s ", p + 1))
+        if (p > 0 && std::isalpha((unsigned char)t[p - 1])) t.replace(p, 2, "'s");
+    for (const char* w : {"You re ", "you re ", "We re ", "we re ", "They re ", "they re "}) {
+        std::string fixed = w;
+        fixed[fixed.find(' ')] = '\'';
+        ReplaceAll(t, w, fixed);
+    }
+    // a capital K inside a sentence in a plain word ("before we Knew", "you Know")
+    for (const char* w : {"Know", "Knew", "Kill", "Kidnap", "Kind "}) {
+        const size_t n = std::strlen(w);
+        for (size_t p = t.find(w); p != std::string::npos; p = t.find(w, p + n))
+            if (p >= 2 && t[p - 1] == ' ' && (std::islower((unsigned char)t[p - 2]) || t[p - 2] == ',')) t[p] = 'k';
+    }
+    return true;
+}
+
 constexpr int kWrap = 48, kTextRows = 22;   // 22 rows: the last 14 px of the top screen are the footer
 
 void WrapInto(std::vector<std::string>& out, const std::string& para) {
@@ -1349,6 +1496,7 @@ void LoadBookFile(const std::string& path) {
     while (std::fgets(buf, sizeof buf, f)) {
         line = buf;
         while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) line.pop_back();
+        if (path.rfind("sdmc:", 0) == 0 && !CleanScanLine(line)) continue;
         if (line.rfind("## ", 0) == 0) {
             flush();
             b.sections.push_back({line.substr(3), {}});
@@ -1376,6 +1524,7 @@ void LoadBookFile(const std::string& path) {
 
 void LoadBooks() {
     books.clear();
+    LoadJournalSeen();
     for (const char* dir : {"romfs:/manual", "sdmc:/3ds/goldbox/manual"}) {
         std::vector<std::string> names;
         if (DIR* d = opendir(dir)) {
@@ -1440,6 +1589,10 @@ std::vector<Button> ViewerButtons() {
         int r = i / cols - firstRow, c = i % cols;
         Button sb{6 + c * (bw + 4), 34 + r * (bh + 4), bw, bh, (uint16_t)(0xE000 + i), SectionLabel(bk, bk.sections[i])};
         sb.selected = i == viewer.section;
+        if (grid && bk.sections[i].title.rfind("Entry ", 0) == 0) {
+            const int e = std::atoi(bk.sections[i].title.c_str() + 6);
+            sb.marked = e > 0 && e < 256 && journalSeen[e];
+        }
         b.push_back(sb);
     }
     b.push_back({112, 206, 102, 28, kViewerLefty, leftyOn ? "LEFT: ON" : "LEFT: OFF"});
@@ -1563,6 +1716,10 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
     viewer.scroll = std::min(viewer.scroll, maxS2);
     Fill(top, 0, 0, 400, 240, RGB{14, 12, 6});
     std::string head = bk2.tab + " - " + s2.title;
+    if (IsJournal(bk2) && s2.title.rfind("Entry ", 0) == 0) {
+        const int e = std::atoi(s2.title.c_str() + 6);
+        if (e > 0 && e < 256 && journalSeen[e]) head += "   (gold corner: the game sent you here)";
+    }
     if (head.size() > 48) head = head.substr(0, 47) + ".";
     Text(top, 8, 4, head, kGold);
     Fill(top, 8, 14, 384, 1, RGB{120, 100, 40});
@@ -1576,7 +1733,8 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
     }
     // Footer: the house wording (8 px font, 50 letters across: no colons, tighter gaps)
     Fill(top, 0, 226, 400, 14, RGB{30, 26, 14});
-    Text(top, leftyOn ? 4 : 8, 229, LH("Sticks scroll  D-Pad, L/R section  B/START close", "Sticks scroll ABXY, L/R section D-Down/START close"), kGrey);
+    if (leftySaveFailed) Text(top, 8, 229, "Could not save the setting. Is the SD card locked?", kRed);
+    else Text(top, leftyOn ? 4 : 8, 229, LH("Sticks scroll  D-Pad, L/R section  B/START close", "Sticks scroll ABXY, L/R section D-Down/START close"), kGrey);
     if (!top.wide) std::memcpy(topR.fb, top.fb, 400 * 240 * 3);
 
     // Bottom: tabs, section buttons, focus
@@ -1779,11 +1937,17 @@ void EngineStopped() { engineDone = true; }
 struct PortMenu {
     bool open = false;
     bool confirm = false;  // "Exit the game?" showing
+    bool direct = false;   // the question was opened by the game's own "Exit Game" line: NO closes the menu
     int focus = 0;
     u64 nextMove = 0;
+    // GOLDBOX-X3: SAVE. 0 = not possible here (greyed); 1 = exploring: Encamp, then Save;
+    // 2 = already in camp: Save. Set every frame from the game's own menu words.
+    int saveRoute = 0;
 } portMenu;
+u64 saveAfterCampUntil = 0;   // SAVE pressed while exploring: send Save once the camp menu is up
 constexpr uint16_t kMenuResume = 0xC001, kMenuManual = 0xC002, kMenuJournal = 0xC003, kMenuExit = 0xC004,
-                   kMenuYes = 0xC005, kMenuNo = 0xC006;
+                   kMenuYes = 0xC005, kMenuNo = 0xC006, kMenuSave = 0xC007;
+constexpr int kMenuExitRow = 4;
 
 std::vector<Button> PortMenuButtons() {
     std::vector<Button> b;
@@ -1792,11 +1956,15 @@ std::vector<Button> PortMenuButtons() {
         b.push_back({162, 100, 152, 134, kMenuNo, "NO"});
         return b;
     }
-    // Four big rows filling the screen (6 px edges, 4 px gaps).
-    const char* labels[4] = {"RESUME", "MANUAL", "JOURNAL", "EXIT GAME"};
-    uint16_t keys4[4] = {kMenuResume, kMenuManual, kMenuJournal, kMenuExit};
-    int h = (240 - 12 - 3 * 4) / 4;
-    for (int i = 0; i < 4; i++) b.push_back({6, 6 + i * (h + 4), 308, h, keys4[i], labels[i]});
+    // Five big rows filling the screen (6 px edges, 4 px gaps).
+    const char* labels[5] = {"RESUME", "SAVE", "MANUAL", "JOURNAL", "EXIT GAME"};
+    uint16_t keys5[5] = {kMenuResume, kMenuSave, kMenuManual, kMenuJournal, kMenuExit};
+    int h = (240 - 12 - 4 * 4) / 5;
+    for (int i = 0; i < 5; i++) {
+        Button bt{6, 6 + i * (h + 4), 308, h, keys5[i], labels[i]};
+        bt.disabled = keys5[i] == kMenuSave && portMenu.saveRoute == 0;
+        b.push_back(bt);
+    }
     return b;
 }
 
@@ -1950,7 +2118,7 @@ bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surfac
     portMenu.focus = std::max(0, std::min(portMenu.focus, n - 1));
     const Button* pressed = nullptr;
     if (down & (KEY_B | KEY_START)) {
-        if (portMenu.confirm) portMenu.confirm = false, portMenu.focus = 3;
+        if (portMenu.confirm && !portMenu.direct) portMenu.confirm = false, portMenu.focus = kMenuExitRow;
         else portMenu.open = false;
         PlayClick();
         return false;
@@ -1960,9 +2128,10 @@ bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surfac
     else if (held & (KEY_DDOWN | KEY_DRIGHT)) d = 1;
     if (d && ((down & (KEY_DUP | KEY_DDOWN | KEY_DLEFT | KEY_DRIGHT)) || now >= portMenu.nextMove)) {
         portMenu.focus = (portMenu.focus + d + n) % n;
+        if (bs[portMenu.focus].disabled) portMenu.focus = (portMenu.focus + d + n) % n;   // a greyed row is skipped
         portMenu.nextMove = now + ((down & (KEY_DUP | KEY_DDOWN | KEY_DLEFT | KEY_DRIGHT)) ? 350 : 120);
     }
-    if (down & KEY_A) pressed = &bs[portMenu.focus];
+    if ((down & KEY_A) && !bs[portMenu.focus].disabled) pressed = &bs[portMenu.focus];
     if (down & KEY_TOUCH) {
         touchPosition t;
         hidTouchRead(&t);
@@ -1986,9 +2155,19 @@ bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surfac
                 viewer.scroll = 0;
                 break;
             }
-            case kMenuExit: portMenu.confirm = true; portMenu.focus = 1; break;   // the ring starts on NO
+            case kMenuSave:
+                // GOLDBOX-X3: the game's own save, reached for the player: from the 3D view or the
+                // wilderness map Encamp first (Save follows when the camp menu is up), in camp Save.
+                portMenu.open = false;
+                if (portMenu.saveRoute == 1) { host::PushKey(keys::Letter('E')); saveAfterCampUntil = now + 4000; }
+                else if (portMenu.saveRoute == 2) host::PushKey(keys::Letter('S'));
+                break;
+            case kMenuExit: portMenu.confirm = true; portMenu.direct = false; portMenu.focus = 1; break;   // the ring starts on NO
             case kMenuYes: exitGame = true; break;
-            case kMenuNo: portMenu.confirm = false; portMenu.focus = 3; break;
+            case kMenuNo:
+                if (portMenu.direct) portMenu.open = false;
+                else portMenu.confirm = false, portMenu.focus = kMenuExitRow;
+                break;
         }
     }
 
@@ -1998,22 +2177,33 @@ bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surfac
     Text(top, 8, 7, "CURSE OF THE AZURE BONDS", kGold);
     Text(top, 392 - TextWidth("PAUSED"), 7, "PAUSED", kGrey);
     if (portMenu.confirm) {
-        Text(top, 16, 60, "Exit the game?", kWhite, 2);
+        // GOLDBOX-U5: the question and its two buttons are on the touch screen; this screen
+        // holds the detail only (one wording, said once).
         if (SuspendSavePossible()) {
-            Text(top, 16, 100, "The game is saved first to slot J,", kGrey);
-            Text(top, 16, 116, "the slot kept for the exit save.", kGrey);
-            Text(top, 16, 128, "Load it with Load Saved Game, then J.", kGrey);
+            Text(top, 16, 40, "EXIT GAME saves first.", kWhite, 2);
+            Text(top, 16, 80, "The game is saved to slot J, the slot kept", kGrey);
+            Text(top, 16, 94, "for the exit save. Your own saves (A to I)", kGrey);
+            Text(top, 16, 108, "are not touched.", kGrey);
+            Text(top, 16, 132, "To carry on later:", kWhite);
+            Text(top, 16, 146, "Load Saved Game, then J.", kGold);
         } else {
-            Text(top, 16, 100, "Progress since your last save is lost.", kGrey);
-            Text(top, 16, 116, "Save first from the game's own menu", kGrey);
-            Text(top, 16, 128, "(Encamp, then Save) if you want to keep it.", kGrey);
+            Text(top, 16, 40, "Nothing is saved here.", kWhite, 2);
+            Text(top, 16, 80, "The game can only be saved with a party", kGrey);
+            Text(top, 16, 94, "in the world: in camp, on the wilderness", kGrey);
+            Text(top, 16, 108, "map or in the 3D view.", kGrey);
+            Text(top, 16, 132, "Characters you made and saved are kept.", kGrey);
         }
     } else {
-        Text(top, 16, 40, "RESUME     back to the game", kWhite);
-        Text(top, 16, 60, "MANUAL     how to play on the 3DS", kWhite);
-        Text(top, 16, 80, "JOURNAL    the Adventurer's Journal", kWhite);
-        Text(top, 16, 100, "EXIT GAME  back to the Homebrew Menu", kWhite);
-        Text(top, 16, 130, "Save from the game itself: Encamp, then Save.", kGrey);
+        Text(top, 16, 36, "RESUME     back to the game", kWhite);
+        Text(top, 16, 54, portMenu.saveRoute == 1 ? "SAVE       makes camp, then the Save list"
+                        : portMenu.saveRoute == 2 ? "SAVE       opens the game's Save list"
+                                                  : "SAVE       (grey) only while exploring or in camp",
+             portMenu.saveRoute ? kWhite : kGrey);
+        Text(top, 16, 72, "MANUAL     how to play on the 3DS", kWhite);
+        Text(top, 16, 90, "JOURNAL    the Adventurer's Journal", kWhite);
+        Text(top, 16, 108, "EXIT GAME  back to the Homebrew Menu", kWhite);
+        Text(top, 16, 134, "EXIT GAME saves to slot J where it can.", kGrey);
+        Text(top, 16, 148, "To carry on: Load Saved Game, then J.", kGrey);
         Text(top, 16, 200, "Build " PORT_VERSION, kGrey);   // git describe of goldbox-3ds
     }
     Fill(top, 0, 224, 400, 16, RGB{20, 30, 70});
@@ -2023,11 +2213,11 @@ bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surfac
     Fill(bottom, 0, 0, 320, 240, kDash);
     if (portMenu.confirm) {
         Text(bottom, (320 - TextWidth("Exit the game?", 2)) / 2, 30, "Exit the game?", kWhite, 2);
-        const char* sub = SuspendSavePossible() ? "Saved first to slot J." : "Unsaved progress is lost.";
+        const char* sub = SuspendSavePossible() ? "Saved first to slot J (Load, then J)." : "Nothing is saved here.";
         Text(bottom, (320 - TextWidth(sub)) / 2, 64, sub, kGrey);
     }
     DrawButtons(bottom, bs, now);
-    DrawRing(bottom, bs[portMenu.focus]);
+    if (!bs[portMenu.focus].disabled) DrawRing(bottom, bs[portMenu.focus]);
     return exitGame;
 }
 
@@ -2055,11 +2245,34 @@ int main(int argc, char** argv) {
         MakeClick();
     }
 
-    // No game data? Explain where it goes instead of exiting silently.
+    // No game data, or only part of it? Say what is missing instead of failing later inside
+    // the game (GOLDBOX-Q5: the check used to look for GEO2.DAX only).
     {
-        FILE* probe = std::fopen("sdmc:/3ds/goldbox/cotab/GEO2.DAX", "rb");
-        if (!probe) probe = std::fopen("sdmc:/3ds/goldbox/cotab/geo2.dax", "rb");
-        if (!probe) {
+        static const char* const kNeeded[] = {
+            "8X8D1.DAX", "8X8D2.DAX", "8X8D3.DAX", "8X8D4.DAX", "8X8D5.DAX", "8X8D6.DAX", "BIGPIC1.DAX", "BIGPIC2.DAX", "BIGPIC6.DAX",
+            "BODY2.DAX", "BODY3.DAX", "BODY4.DAX", "BODY5.DAX", "BODY6.DAX", "CBODY.DAX", "CHEAD.DAX", "COMSPR.DAX",
+            "CPIC1.DAX", "CPIC2.DAX", "CPIC3.DAX", "CPIC4.DAX", "CPIC5.DAX", "CPIC6.DAX", "DUNGCOM.DAX",
+            "ECL1.DAX", "ECL2.DAX", "ECL3.DAX", "ECL4.DAX", "ECL5.DAX", "ECL6.DAX",
+            "GEO2.DAX", "GEO3.DAX", "GEO4.DAX", "GEO5.DAX", "GEO6.DAX", "HEAD2.DAX", "HEAD3.DAX", "HEAD4.DAX", "HEAD5.DAX", "HEAD6.DAX",
+            "ITEM1.DAX", "ITEM2.DAX", "ITEM3.DAX", "ITEM4.DAX", "ITEM5.DAX", "ITEM6.DAX", "ITEMS",
+            "MON1CHA.DAX", "MON1ITM.DAX", "MON1SPC.DAX", "MON2CHA.DAX", "MON2ITM.DAX", "MON2SPC.DAX", "MON3CHA.DAX", "MON3ITM.DAX", "MON3SPC.DAX",
+            "MON4CHA.DAX", "MON4ITM.DAX", "MON4SPC.DAX", "MON5CHA.DAX", "MON5ITM.DAX", "MON5SPC.DAX", "MON6CHA.DAX", "MON6ITM.DAX", "MON6SPC.DAX",
+            "PIC1.DAX", "PIC2.DAX", "PIC3.DAX", "PIC4.DAX", "PIC5.DAX", "PIC6.DAX", "RANDCOM.DAX", "SKY.DAX",
+            "SPRIT1.DAX", "SPRIT2.DAX", "SPRIT3.DAX", "SPRIT4.DAX", "SPRIT5.DAX", "SPRIT6.DAX", "TILES.DAX", "TITLE.DAX",
+            "WALLDEF2.DAX", "WALLDEF3.DAX", "WALLDEF4.DAX", "WALLDEF5.DAX", "WALLDEF6.DAX", "WILDCOM.DAX"};
+        std::vector<std::string> have, missing;
+        if (DIR* d = opendir("sdmc:/3ds/goldbox/cotab")) {
+            while (dirent* e = readdir(d)) {
+                std::string n = e->d_name;
+                for (auto& ch : n) ch = (char)std::toupper((unsigned char)ch);
+                have.push_back(n);
+            }
+            closedir(d);
+        }
+        for (const char* n : kNeeded)
+            if (std::find(have.begin(), have.end(), n) == have.end()) missing.push_back(n);
+        const bool none = std::find(have.begin(), have.end(), "GEO2.DAX") == have.end();
+        if (none) {
             PrintConsole con;
             consoleInit(GFX_BOTTOM, &con);
             std::printf("\x1b[2;1H\x1b[31;1mGame data not found.\x1b[0m\n\n"
@@ -2080,7 +2293,44 @@ int main(int argc, char** argv) {
             gfxExit();
             return 0;
         }
-        std::fclose(probe);
+        if (!missing.empty()) {
+            // Part of the data is there: name what is missing (drawn with the port's own text, no
+            // console, so "start anyway" leaves the screen as the game expects it).
+            bool go = false, wait = true;
+            char head[48];
+            std::snprintf(head, sizeof head, "%d of %d game files are missing from", (int)missing.size(),
+                          (int)(sizeof kNeeded / sizeof kNeeded[0]));
+            while (aptMainLoop()) {
+                hidScanInput();
+                const u32 kd = hidKeysDown();
+                if (wait) { if (!(hidKeysHeld() & (KEY_A | KEY_START))) wait = false; }
+                else if (kd & KEY_START) break;
+                else if (kd & KEY_A) { go = true; break; }
+                u16 w0, h0;
+                Surface sb{gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, &w0, &h0), 320};
+                Fill(sb, 0, 0, 320, 240, kDash);
+                Fill(sb, 0, 0, 320, 22, kBtn);
+                Text(sb, 8, 7, "GAME FILES MISSING", kGold);
+                Text(sb, 8, 32, head, kWhite);
+                Text(sb, 8, 44, "sdmc:/3ds/goldbox/cotab/", kWhite);
+                size_t shown = 0;
+                for (; shown < missing.size() && shown < 27; shown++)
+                    Text(sb, 8 + (int)(shown % 3) * 104, 62 + (int)(shown / 3) * 11, missing[shown], kGrey);
+                if (shown < missing.size()) Text(sb, 8, 62 + 9 * 11, "and " + std::to_string(missing.size() - shown) + " more", kGrey);
+                Text(sb, 8, 180, "Copy them from your GOG install.", kWhite);
+                Text(sb, 8, 196, "The game may stop when it needs one.", kGrey);
+                Text(sb, 8, 220, "START: exit        A: start anyway", kWhite);
+                gfxFlushBuffers();
+                gfxSwapBuffers();
+                gspWaitForVBlank();
+            }
+            if (!go) {
+                AudioExit();
+                romfsExit();
+                gfxExit();
+                return 0;
+            }
+        }
     }
 
     gfxSetDoubleBuffering(GFX_TOP, true);
@@ -2157,7 +2407,19 @@ int main(int argc, char** argv) {
         cx.entryMaxValue = entryMax;
         int highlight = menuHighlight;
         LightLock_Unlock(&menuLock);
+        cx.highlight = highlight;
         cx.state = host::GameStateNow();
+        // GOLDBOX-X3: can the START menu's SAVE work here? (from the menu that is waiting now)
+        {
+            bool encamp = false, save = false;
+            for (auto& it : cx.items) { encamp |= SameText(it.label, "Encamp"); save |= SameText(it.label, "Save"); }
+            portMenu.saveRoute = (encamp && (cx.state == kStateWilderness || cx.state == kStateDungeon)) ? 1
+                               : (save && cx.state == 2) ? 2 : 0;
+            if (saveAfterCampUntil) {   // SAVE was pressed while exploring: the camp menu is up now
+                if (now > saveAfterCampUntil) saveAfterCampUntil = 0;
+                else if (portMenu.saveRoute == 2 && host::PendingKeys() == 0) { host::PushKey(keys::Letter('S')); saveAfterCampUntil = 0; }
+            }
+        }
         bool combat = cx.state == kStateCombat;
         // Between two menus (e.g. while a step in the 3D view is drawn) the
         // game shows no menu for a moment; keep the last one on screen so
@@ -2317,6 +2579,7 @@ int main(int argc, char** argv) {
             if (e > 0) {
                 journalEntry = e;
                 journalSeenAt = now;
+                MarkJournalSeen(e);
             } else if (journalEntry && now > journalSeenAt + 120000) {
                 journalEntry = 0;  // the hint fades two minutes after the text is gone
             }
@@ -2324,13 +2587,30 @@ int main(int argc, char** argv) {
 
         // ---- buttons ----
         // START: the port menu (house style). ZL alone swaps the screens.
-        if ((down & KEY_START) && !overlay) {
+        // GOLDBOX-Q3: also while the keyboard or number pad is up (START used to be Enter there
+        // and accepted a half-typed name; ENTER / OK are keys on the pad itself).
+        if (down & KEY_START) {
             portMenu.open = true;
             portMenu.confirm = false;
+            portMenu.direct = false;
             portMenu.focus = 0;
             PlayClick();
             continue;
         }
+        // GOLDBOX-Q1: the game's own "Exit to DOS" line goes to the port's exit question (focus on
+        // NO, B cancels) instead of the game's Yes-first "Quit to DOS".
+        auto sendGame = [&](uint16_t k) {
+            if (hotMenu)
+                for (auto& h : cx.hot)
+                    if (h.key == k && SameText(h.label, "Exit to DOS")) {
+                        portMenu.open = true;
+                        portMenu.confirm = true;
+                        portMenu.direct = true;
+                        portMenu.focus = 1;
+                        return;
+                    }
+            host::PushKey(k);
+        };
         if (down & KEY_ZL) {
             userFlip = !userFlip;
             swapped = !swapped;
@@ -2349,10 +2629,8 @@ int main(int argc, char** argv) {
         if (navActive) {
             navPress = (down & KEY_A) != 0;  // presses the ringed button (below)
         } else if (down & KEY_A) {
-            host::PushKey(hotMenu ? cx.hot[hotFocus].key : keys::Enter);
+            sendGame(hotMenu ? cx.hot[hotFocus].key : keys::Enter);
         }
-        // START = Enter while typing a name (the keyboard or number pad is open).
-        if (overlay && (down & KEY_START)) host::PushKey(keys::Enter);
         if (down & KEY_B) host::PushKey(keys::Escape);
         if (cx.entry == 1 || cx.entry == 2) {
             if (down & KEY_Y) host::PushKey(keys::Backspace);  // typing: Y deletes, X does nothing
@@ -2512,6 +2790,19 @@ int main(int argc, char** argv) {
                 auto choices = ExplorePanelWanted(cx, cx.map) ? ExploreButtons(cx) : ChoiceButtons(cx);
                 buttons.insert(buttons.end(), choices.begin(), choices.end());
             }
+            // GOLDBOX-U3: strip keys the waiting prompt does not take are greyed and inert, and
+            // YES / NO are not offered twice when the big choice buttons already hold them.
+            if (!(combat && !swapped && !cx.words.empty())) {
+                bool takesY = false, takesN = false, bigYes = false;
+                for (auto& it : cx.items) { takesY |= std::toupper((unsigned char)it.key) == 'Y'; takesN |= std::toupper((unsigned char)it.key) == 'N'; }
+                for (size_t i = 7; i < buttons.size(); i++) bigYes |= buttons[i].key == keys::Letter('Y');
+                for (size_t i = 0; i < buttons.size() && i < 7; i++) {
+                    Button& sbn = buttons[i];
+                    if (sbn.key == (uint16_t)'Y') sbn.disabled = !takesY || bigYes;
+                    else if (sbn.key == (uint16_t)'N') sbn.disabled = !takesN || bigYes;
+                    else if (sbn.key == keys::Enter || sbn.key == keys::Escape) sbn.disabled = hotMenu;
+                }
+            }
         }
         int gameFocus = overlay ? -1 : GameFocus(buttons, cx, hotMenu, highlight);
 
@@ -2560,6 +2851,7 @@ int main(int argc, char** argv) {
         if (navActive && !buttons.empty()) {
             if (navFocus < 0) {
                 navFocus = gameFocus >= 0 ? gameFocus : 0;
+                for (int i = 0; i < (int)buttons.size() && buttons[navFocus].disabled; i++) navFocus = (navFocus + 1) % (int)buttons.size();
                 for (int i = 0; i < (int)buttons.size(); i++)  // keyboard page flipped: stay on its key
                     if (overlay && flashKey == kKbPage && buttons[i].key == kKbPage) navFocus = i;
             }
@@ -2571,10 +2863,10 @@ int main(int argc, char** argv) {
                 navFocus = NavMove(buttons, navFocus, dx, dy);
                 navNext = now + (fresh ? 350 : 120);
             }
-            if (navPress) {
+            if (navPress && !buttons[navFocus].disabled) {
                 const Button b = buttons[navFocus];  // a copy: the press may change the key set
                 if (buttonMode) buttonMode = false;  // one press, then the D-Pad is the game's again
-                if (uint16_t k = pressButton(&b)) host::PushKey(k);
+                if (uint16_t k = pressButton(&b)) sendGame(k);
             }
         } else if (!navActive && (down & KEY_A) && gameFocus >= 0) {
             // A picks the game's highlight (sent above); press its button too
@@ -2615,7 +2907,7 @@ int main(int argc, char** argv) {
                 flashKey = 0;
                 flashUntil = now + 150;
             }
-            if (k) host::PushKey(k);
+            if (k) sendGame(k);
         } else if (padTracking && (held & KEY_TOUCH)) {
             // slide: move the pointer by how far the finger moves (a little
             // faster than 1:1 so one slide crosses the combat map)
