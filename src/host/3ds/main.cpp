@@ -1733,7 +1733,7 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
     }
     // Footer: the house wording (8 px font, 50 letters across: no colons, tighter gaps)
     Fill(top, 0, 226, 400, 14, RGB{30, 26, 14});
-    if (leftySaveFailed) Text(top, 8, 229, "Could not save the setting. Is the SD card locked?", kRed);
+    if (leftySaveFailed) Text(top, 8, 229, "Could not save the setting (SD card locked?)", kRed);
     else Text(top, leftyOn ? 4 : 8, 229, LH("Sticks scroll  D-Pad, L/R section  B/START close", "Sticks scroll ABXY, L/R section D-Down/START close"), kGrey);
     if (!top.wide) std::memcpy(topR.fb, top.fb, 400 * 240 * 3);
 
@@ -2197,7 +2197,7 @@ bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surfac
         Text(top, 16, 36, "RESUME     back to the game", kWhite);
         Text(top, 16, 54, portMenu.saveRoute == 1 ? "SAVE       makes camp, then the Save list"
                         : portMenu.saveRoute == 2 ? "SAVE       opens the game's Save list"
-                                                  : "SAVE       (grey) only while exploring or in camp",
+                                                  : "SAVE       only while exploring or in camp",
              portMenu.saveRoute ? kWhite : kGrey);
         Text(top, 16, 72, "MANUAL     how to play on the 3DS", kWhite);
         Text(top, 16, 90, "JOURNAL    the Adventurer's Journal", kWhite);
