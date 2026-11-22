@@ -2794,7 +2794,8 @@ int main(int argc, char** argv) {
             // YES / NO are not offered twice when the big choice buttons already hold them.
             if (!(combat && !swapped && !cx.words.empty())) {
                 bool takesY = false, takesN = false, bigYes = false;
-                for (auto& it : cx.items) { takesY |= std::toupper((unsigned char)it.key) == 'Y'; takesN |= std::toupper((unsigned char)it.key) == 'N'; }
+                for (auto& it : cx.items) { takesY |= SameText(it.label, "Yes"); takesN |= SameText(it.label, "No"); }
+                takesY = takesN = takesY && takesN;   // a real Yes / No question (N alone is "Next" in the icon menus)
                 for (size_t i = 7; i < buttons.size(); i++) bigYes |= buttons[i].key == keys::Letter('Y');
                 for (size_t i = 0; i < buttons.size() && i < 7; i++) {
                     Button& sbn = buttons[i];
