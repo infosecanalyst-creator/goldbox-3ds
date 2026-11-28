@@ -1739,10 +1739,16 @@ void ViewerFrame(u32 down, u32 held, u64 now, const Surface& top, const Surface&
         Fill(top, 395, 19, 3, 198, RGB{50, 44, 30});
         Fill(top, 395, y, 3, h, kGold);
     }
-    // Footer: the house wording (8 px font, 50 letters across: no colons, tighter gaps)
-    Fill(top, 0, 226, 400, 14, RGB{30, 26, 14});
-    if (leftySaveFailed) Text(top, 8, 229, "Could not save the setting (SD card locked?)", kRed);
-    else Text(top, leftyOn ? 4 : 8, 229, LH("Sticks scroll  D-Pad, L/R section  B/START close", "Sticks scroll ABXY, L/R section D-Down/START close"), kGrey);
+    // Footer: the house words (cross-port pass). The 8 px font holds 50 letters across and the
+    // sentence has 57, so it takes two centred lines under the text (the last text row ends at y 216).
+    Fill(top, 0, 218, 400, 22, RGB{30, 26, 14});
+    if (leftySaveFailed) Text(top, 8, 225, "Could not save the setting (SD card locked?)", kRed);
+    else {
+        const std::string f1 = LH("Sticks: scroll   D-Pad, L / R: section", "Sticks: scroll   A/B/X/Y, L / R: section");
+        const std::string f2 = LH("B / START: close", "D-Down / START: close");
+        Text(top, (400 - TextWidth(f1)) / 2, 220, f1, kGrey);
+        Text(top, (400 - TextWidth(f2)) / 2, 230, f2, kGrey);
+    }
     if (!top.wide) std::memcpy(topR.fb, top.fb, 400 * 240 * 3);
 
     // Bottom: tabs, section buttons, focus
@@ -1939,8 +1945,8 @@ void EngineStopped() { engineDone = true; }
 }  // namespace platform
 
 // ---------------------------------------------------------------------------
-// START menu (house style, same in every port): RESUME, MANUAL, JOURNAL,
-// EXIT GAME (asks first). B or START closes it. D-Pad + A or touch.
+// START menu (house style, same in every port): RESUME, MANUAL, SAVE GAME, JOURNAL,
+// LEFT HAND, EXIT GAME (asks first). B or START closes it. D-Pad + A or touch.
 // ---------------------------------------------------------------------------
 struct PortMenu {
     bool open = false;
@@ -1954,21 +1960,21 @@ struct PortMenu {
 } portMenu;
 u64 saveAfterCampUntil = 0;   // SAVE pressed while exploring: send Save once the camp menu is up
 constexpr uint16_t kMenuResume = 0xC001, kMenuManual = 0xC002, kMenuJournal = 0xC003, kMenuExit = 0xC004,
-                   kMenuYes = 0xC005, kMenuNo = 0xC006, kMenuSave = 0xC007;
-constexpr int kMenuExitRow = 4;
+                   kMenuYes = 0xC005, kMenuNo = 0xC006, kMenuSave = 0xC007, kMenuLefty = 0xC008;
+constexpr int kMenuExitRow = 5;
 
 std::vector<Button> PortMenuButtons() {
     std::vector<Button> b;
     if (portMenu.confirm) {
-        b.push_back({6, 100, 152, 134, kMenuYes, "YES, EXIT"});   // fill the screen below the question
+        b.push_back({6, 100, 152, 134, kMenuYes, "YES"});   // fill the screen below the question
         b.push_back({162, 100, 152, 134, kMenuNo, "NO"});
         return b;
     }
-    // Five big rows filling the screen (6 px edges, 4 px gaps).
-    const char* labels[5] = {"RESUME", "SAVE", "MANUAL", "JOURNAL", "EXIT GAME"};
-    uint16_t keys5[5] = {kMenuResume, kMenuSave, kMenuManual, kMenuJournal, kMenuExit};
-    int h = (240 - 12 - 4 * 4) / 5;
-    for (int i = 0; i < 5; i++) {
+    // Six big rows filling the screen (6 px edges, 4 px gaps), in the house order (cross-port pass).
+    const char* labels[6] = {"RESUME", "MANUAL", "SAVE GAME", "JOURNAL", leftyOn ? "LEFT HAND: ON" : "LEFT HAND: OFF", "EXIT GAME"};
+    uint16_t keys5[6] = {kMenuResume, kMenuManual, kMenuSave, kMenuJournal, kMenuLefty, kMenuExit};
+    int h = (240 - 12 - 5 * 4) / 6;
+    for (int i = 0; i < 6; i++) {
         Button bt{6, 6 + i * (h + 4), 308, h, keys5[i], labels[i]};
         bt.disabled = keys5[i] == kMenuSave && portMenu.saveRoute == 0;
         b.push_back(bt);
@@ -2170,6 +2176,7 @@ bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surfac
                 if (portMenu.saveRoute == 1) { host::PushKey(keys::Letter('E')); saveAfterCampUntil = now + 4000; }
                 else if (portMenu.saveRoute == 2) host::PushKey(keys::Letter('S'));
                 break;
+            case kMenuLefty: LeftySet(!leftyOn); break;   // the manual's switch too; the menu stays open
             case kMenuExit: portMenu.confirm = true; portMenu.direct = false; portMenu.focus = 1; break;   // the ring starts on NO
             case kMenuYes: exitGame = true; break;
             case kMenuNo:
@@ -2203,15 +2210,16 @@ bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surfac
         }
     } else {
         Text(top, 16, 36, "RESUME     back to the game", kWhite);
-        Text(top, 16, 54, portMenu.saveRoute == 1 ? "SAVE       makes camp, then the Save list"
-                        : portMenu.saveRoute == 2 ? "SAVE       opens the game's Save list"
-                                                  : "SAVE       only while exploring or in camp",
+        Text(top, 16, 54, "MANUAL     how to play on the 3DS", kWhite);
+        Text(top, 16, 72, portMenu.saveRoute == 1 ? "SAVE GAME  makes camp, then the Save list"
+                        : portMenu.saveRoute == 2 ? "SAVE GAME  opens the game's Save list"
+                                                  : "SAVE GAME  only while exploring or in camp",
              portMenu.saveRoute ? kWhite : kGrey);
-        Text(top, 16, 72, "MANUAL     how to play on the 3DS", kWhite);
         Text(top, 16, 90, "JOURNAL    the Adventurer's Journal", kWhite);
-        Text(top, 16, 108, "EXIT GAME  back to the Homebrew Menu", kWhite);
-        Text(top, 16, 134, "EXIT GAME saves to slot J where it can.", kGrey);
-        Text(top, 16, 148, "To carry on: Load Saved Game, then J.", kGrey);
+        Text(top, 16, 108, leftySaveFailed ? "LEFT HAND  could not save it (SD card?)" : "LEFT HAND  swap the D-pad and A/B/X/Y", leftySaveFailed ? kRed : kWhite);
+        Text(top, 16, 126, "EXIT GAME  back to the Homebrew Menu", kWhite);
+        Text(top, 16, 152, "EXIT GAME saves to slot J where it can.", kGrey);
+        Text(top, 16, 166, "To carry on: Load Saved Game, then J.", kGrey);
         Text(top, 16, 200, "Build " PORT_VERSION, kGrey);   // git describe of goldbox-3ds
     }
     Fill(top, 0, 224, 400, 16, RGB{20, 30, 70});
@@ -2220,9 +2228,13 @@ bool PortMenuFrame(u32 down, u32 held, u64 now, const Surface& top, const Surfac
 
     Fill(bottom, 0, 0, 320, 240, kDash);
     if (portMenu.confirm) {
-        Text(bottom, (320 - TextWidth("Exit the game?", 2)) / 2, 30, "Exit the game?", kWhite, 2);
-        const char* sub = SuspendSavePossible() ? "Saved first to slot J (Load, then J)." : "Nothing is saved here.";
-        Text(bottom, (320 - TextWidth(sub)) / 2, 64, sub, kGrey);
+        // house wording (cross-port pass): "Exit <game>?" and whether it is saved first
+        Text(bottom, (320 - TextWidth("Exit Gold Box?", 2)) / 2, 30, "Exit Gold Box?", kWhite, 2);
+        const bool saves = SuspendSavePossible();
+        const char* sub = saves ? "It is saved first (slot J)." : "Not saved here: progress since";
+        const char* sub2 = saves ? "To carry on: Load Saved Game, then J." : "your last save is lost.";
+        Text(bottom, (320 - TextWidth(sub)) / 2, 60, sub, kGrey);
+        Text(bottom, (320 - TextWidth(sub2)) / 2, 74, sub2, kGrey);
     }
     DrawButtons(bottom, bs, now);
     if (!bs[portMenu.focus].disabled) DrawRing(bottom, bs[portMenu.focus]);

@@ -9,7 +9,7 @@ Every touch button also works with the buttons: a gold ring shows the button A w
 ## Buttons
 A: Enter (pick the highlighted choice).
 
-START: the menu: Resume, Save, Manual, Journal and Exit Game. It opens any time, also while you type. Exit Game asks first, and saves for you when the party is in the world (see Saving and leaving).
+START: the menu: Resume, Manual, Save Game, Journal, Left Hand and Exit Game. It opens any time, also while you type. Exit Game asks first, and saves for you when the party is in the world (see Saving and leaving).
 
 B: Esc (back out). On a Yes / No question B answers No. (Only "Save this character?" waits for a real Yes or No.)
 
@@ -27,7 +27,7 @@ ZR: use the touch-screen buttons with the D-Pad. The gold ring moves to the butt
 
 ZL: swap screens, any time.
 
-Left hand: open the manual (BOOK) and tap LEFT: OFF / ON at the bottom of its touch screen. The D-Pad and the Y, A, B, X buttons swap jobs: Y is up, A is right, B is down, X is left, and the reverse, so the stylus can be held in the left hand and every control in this manual follows the swap. It is remembered.
+Left hand: START, then LEFT HAND, or open the manual (BOOK) and tap LEFT: OFF / ON at the bottom of its touch screen. The D-Pad and the Y, A, B, X buttons swap jobs: Y is up, A is right, B is down, X is left, and the reverse, so the stylus can be held in the left hand and every control in this manual follows the swap. It is remembered.
 
 
 ## The gold ring
@@ -90,14 +90,14 @@ When a new character's numbers are rolled the game asks "Reroll stats?". The two
 
 Questions that quit, drop, overwrite or throw something away start on No.
 
-Exit Game on the start menu asks the same "Exit the game?" as the START menu, with the ring on NO.
+Exit Game on the start menu asks the same "Exit Gold Box?" as the START menu, with the ring on NO.
 
 If some of the game's files are missing from the card, a GAME FILES MISSING page lists them before the game starts.
 
 ## Saving and leaving
-SAVE in the START menu takes you to the game's own save list: while you explore it makes camp first (Encamp, then Save); in camp it opens Save. Pick a slot, A to I. SAVE is grey where the game cannot be saved (the start menu, shops, combat, in the middle of an event). You can also do it by hand: Encamp, then Save.
+SAVE GAME in the START menu takes you to the game's own save list: while you explore it makes camp first (Encamp, then Save); in camp it opens Save. Pick a slot, A to I. SAVE GAME is grey where the game cannot be saved (the start menu, shops, combat, in the middle of an event). You can also do it by hand: Encamp, then Save.
 
-Slot J is kept for the exit save. Exit Game in the START menu asks "Exit the game?" and, while you are camping, on the wilderness map or in the 3D view, saves to slot J first ("Saving to slot J..."). To carry on later, choose Load Saved Game, then J. Closing the game from the HOME menu (HOME, then Close) saves to slot J the same way. Pressing HOME alone also saves to slot J, and sleep mode (closing the lid) does not.
+Slot J is kept for the exit save. Exit Game in the START menu asks "Exit Gold Box?" and, while you are camping, on the wilderness map or in the 3D view, saves to slot J first ("Saving to slot J..."). To carry on later, choose Load Saved Game, then J. Closing the game from the HOME menu (HOME, then Close) saves to slot J the same way. Pressing HOME alone also saves to slot J, and sleep mode (closing the lid) does not.
 
 If the game cannot save (for example in the middle of an event, or when the SD card is full or locked) it says NOT SAVED or SAVE FAILED and asks "EXIT ANYWAY" or "NO". It never quits after a failed save without asking. NO takes you back to the game: finish the event, then exit again.
 

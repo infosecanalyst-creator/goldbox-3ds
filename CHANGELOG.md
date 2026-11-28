@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-27
+
+- Same as the other 3DS ports (cross-port pass). START menu in the house order: RESUME, MANUAL, SAVE GAME, JOURNAL, LEFT HAND, EXIT GAME (SAVE was second and MANUAL third; SAVE is now called SAVE GAME). LEFT HAND is new in the menu: the same switch as LEFT: ON / OFF in the manual.
+- The exit question reads "Exit Gold Box?" with YES / NO (the button said "YES, EXIT"); under it "It is saved first (slot J)." or "Not saved here: progress since your last save is lost."
+- The manual's footer uses the house words, "Sticks: scroll   D-Pad, L / R: section   B / START: close", on two lines (the 8 px font holds 50 letters across).
+
 ## 2026-11-21 (audit fixes)
 
 - The start menu no longer shows eight stray letter buttons (C D M T H V A R) the first time it is drawn, and its four choices stay where they are between taps.
